@@ -343,3 +343,44 @@ export interface CompanionResponse {
 }
 
 export type CompanionRequest = z.infer<typeof companionRequestSchema>;
+
+// Weekly Status Report Types (not stored in DB, computed on-the-fly)
+export interface StatusReportTask {
+  id: string;
+  title: string;
+  status: string;
+  completedAt?: string;
+}
+
+export interface StatusReportEvent {
+  id: string;
+  type: string;
+  title: string;
+  occurredAt: string;
+}
+
+export interface StatusReportRisk {
+  id: string;
+  title: string;
+  category: string;
+  status: string;
+  likelihood: number;
+  impact: number;
+}
+
+export interface StatusReport {
+  projectId: string;
+  projectName: string;
+  generatedAt: string;
+  reportPeriod: {
+    start: string;
+    end: string;
+  };
+  highlights: string[];
+  completedTasks: StatusReportTask[];
+  newOpenTasks: StatusReportTask[];
+  recentEvents: StatusReportEvent[];
+  risks: StatusReportRisk[];
+  nextWeekFocus: string[];
+  openDecisions: string[];
+}
