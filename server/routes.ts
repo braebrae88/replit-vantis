@@ -17,6 +17,9 @@ import {
   type NextAction,
   type CompanionResponse,
   type StatusReport,
+  type TimesheetResponse,
+  type TimesheetEntry,
+  type TimesheetHours,
 } from "@shared/schema";
 import { fromError } from "zod-validation-error";
 
@@ -909,6 +912,139 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Failed to generate status report:", error);
       res.status(500).json({ error: "Failed to generate status report" });
+    }
+  });
+
+  // ============= TIMESHEET DRAFT =============
+
+  app.get("/api/timesheet", async (req, res) => {
+    try {
+      const { from, to } = req.query;
+      
+      if (!from || !to || typeof from !== "string" || typeof to !== "string") {
+        return res.status(400).json({ error: "Missing or invalid 'from' and 'to' date parameters (YYYY-MM-DD)" });
+      }
+
+      const fromDate = new Date(from);
+      const toDate = new Date(to);
+      toDate.setHours(23, 59, 59, 999);
+
+      if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+        return res.status(400).json({ error: "Invalid date format. Use YYYY-MM-DD" });
+      }
+
+      if (fromDate > toDate) {
+        return res.status(400).json({ error: "'from' date must be before 'to' date" });
+      }
+
+      const projects = await storage.getProjects();
+      const entries: TimesheetEntry[] = [];
+
+      const totalHours: TimesheetHours = {
+        clientMeetings: 0,
+        internalPlanning: 0,
+        researchAndDrafting: 0,
+        admin: 0,
+      };
+
+      for (const project of projects) {
+        const [events, tasks] = await Promise.all([
+          storage.getEvents(project.id),
+          storage.getTasks(project.id),
+        ]);
+
+        const meetingsInRange = events.filter(
+          (e) =>
+            e.type === "meeting" &&
+            e.occurredAt &&
+            new Date(e.occurredAt) >= fromDate &&
+            new Date(e.occurredAt) <= toDate
+        );
+
+        const filesInRange = events.filter(
+          (e) =>
+            e.type === "file" &&
+            e.occurredAt &&
+            new Date(e.occurredAt) >= fromDate &&
+            new Date(e.occurredAt) <= toDate
+        );
+
+        const tasksInRange = tasks.filter(
+          (t) =>
+            (t.createdAt && new Date(t.createdAt) >= fromDate && new Date(t.createdAt) <= toDate) ||
+            (t.updatedAt && new Date(t.updatedAt) >= fromDate && new Date(t.updatedAt) <= toDate)
+        );
+
+        let totalMeetingMinutes = 0;
+        for (const meeting of meetingsInRange) {
+          try {
+            if (meeting.metadataJson) {
+              const metadata = JSON.parse(meeting.metadataJson);
+              if (metadata.startTime && metadata.endTime) {
+                const start = new Date(metadata.startTime);
+                const end = new Date(metadata.endTime);
+                totalMeetingMinutes += (end.getTime() - start.getTime()) / (1000 * 60);
+              } else {
+                totalMeetingMinutes += 60;
+              }
+            } else {
+              totalMeetingMinutes += 60;
+            }
+          } catch {
+            totalMeetingMinutes += 60;
+          }
+        }
+
+        const clientMeetingsHours = Math.round((totalMeetingMinutes / 60) * 10) / 10;
+        const internalPlanningHours = Math.round(tasksInRange.length * 0.25 * 10) / 10;
+        const researchAndDraftingHours = Math.round(filesInRange.length * 0.5 * 10) / 10;
+        const adminHours = Math.round((meetingsInRange.length * 0.25 + tasksInRange.length * 0.1) * 10) / 10;
+
+        const hasActivity = clientMeetingsHours > 0 || internalPlanningHours > 0 || researchAndDraftingHours > 0 || adminHours > 0;
+
+        if (hasActivity) {
+          const entry: TimesheetEntry = {
+            projectId: project.id,
+            projectName: project.name,
+            hours: {
+              clientMeetings: clientMeetingsHours,
+              internalPlanning: internalPlanningHours,
+              researchAndDrafting: researchAndDraftingHours,
+              admin: adminHours,
+            },
+            breakdown: {
+              meetingCount: meetingsInRange.length,
+              meetingMinutes: Math.round(totalMeetingMinutes),
+              taskCount: tasksInRange.length,
+              fileCount: filesInRange.length,
+            },
+          };
+
+          entries.push(entry);
+
+          totalHours.clientMeetings += clientMeetingsHours;
+          totalHours.internalPlanning += internalPlanningHours;
+          totalHours.researchAndDrafting += researchAndDraftingHours;
+          totalHours.admin += adminHours;
+        }
+      }
+
+      totalHours.clientMeetings = Math.round(totalHours.clientMeetings * 10) / 10;
+      totalHours.internalPlanning = Math.round(totalHours.internalPlanning * 10) / 10;
+      totalHours.researchAndDrafting = Math.round(totalHours.researchAndDrafting * 10) / 10;
+      totalHours.admin = Math.round(totalHours.admin * 10) / 10;
+
+      const response: TimesheetResponse = {
+        from: fromDate.toISOString(),
+        to: toDate.toISOString(),
+        entries,
+        totalHours,
+      };
+
+      res.json(response);
+    } catch (error) {
+      console.error("Failed to generate timesheet:", error);
+      res.status(500).json({ error: "Failed to generate timesheet" });
     }
   });
 

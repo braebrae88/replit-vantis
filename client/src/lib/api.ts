@@ -18,6 +18,7 @@ import type {
   NextAction,
   CompanionResponse,
   StatusReport,
+  TimesheetResponse,
 } from "@shared/schema";
 
 async function handleResponse<T>(response: Response): Promise<T> {
@@ -386,6 +387,14 @@ export const api = {
   statusReport: {
     generate: async (projectId: string): Promise<StatusReport> => {
       const response = await fetch(`/api/projects/${projectId}/status-report`);
+      return handleResponse(response);
+    },
+  },
+
+  // Timesheet
+  timesheet: {
+    generate: async (from: string, to: string): Promise<TimesheetResponse> => {
+      const response = await fetch(`/api/timesheet?from=${from}&to=${to}`);
       return handleResponse(response);
     },
   },

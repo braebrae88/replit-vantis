@@ -1,8 +1,9 @@
-import { Hexagon, Menu } from "lucide-react";
+import { Hexagon, Menu, FileSpreadsheet } from "lucide-react";
 import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { ProjectSidebar } from "./ProjectSidebar";
+import { Link } from "wouter";
 
 export default function MissionControlLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -31,6 +32,15 @@ export default function MissionControlLayout({ children }: { children: React.Rea
             <h1 className="font-bold text-sm tracking-tight">FORGE VANTIS</h1>
             <p className="text-[10px] text-muted-foreground font-mono tracking-wider uppercase">Mission Control</p>
           </div>
+        </div>
+
+        <div className="ml-auto flex items-center gap-2">
+          <Link href="/timesheet">
+            <Button variant="ghost" size="sm" className="gap-2" data-testid="link-timesheet">
+              <FileSpreadsheet className="w-4 h-4" />
+              <span className="hidden sm:inline">Timesheet</span>
+            </Button>
+          </Link>
         </div>
       </div>
 

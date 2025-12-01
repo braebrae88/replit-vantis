@@ -3,6 +3,7 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import MissionControl from "@/pages/MissionControl";
+import Timesheet from "@/pages/Timesheet";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -10,6 +11,7 @@ function Router() {
     <Switch>
       <Route path="/" component={MissionControl} />
       <Route path="/project/:id" component={MissionControl} />
+      <Route path="/timesheet" component={Timesheet} />
       <Route component={NotFound} />
     </Switch>
   );
