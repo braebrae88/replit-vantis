@@ -3,6 +3,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import type { UseCase } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,43 +33,62 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Plus } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const formSchema = z.object({
-  name: z.string().min(3, "Title must be at least 3 characters"),
+  name: z.string().min(3, "Name must be at least 3 characters"),
   problemStatement: z.string().optional(),
   valueHypothesis: z.string().optional(),
   status: z.enum(["draft", "approved", "implemented"]),
 });
 
-export function CreateUseCaseDialog({ projectId }: { projectId: string }) {
+type FormValues = z.infer<typeof formSchema>;
+
+interface CreateUseCaseDialogProps {
+  projectId: string;
+  useCase?: UseCase;
+  trigger?: React.ReactNode;
+  onSuccess?: () => void;
+}
+
+export function CreateUseCaseDialog({ projectId, useCase, trigger, onSuccess }: CreateUseCaseDialogProps) {
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const isEditMode = !!useCase;
 
-  const form = useForm<z.infer<typeof formSchema>>({
+  const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      name: "",
-      problemStatement: "",
-      valueHypothesis: "",
-      status: "draft",
+      name: useCase?.name || "",
+      problemStatement: useCase?.problemStatement || "",
+      valueHypothesis: useCase?.valueHypothesis || "",
+      status: useCase?.status || "draft",
     },
   });
 
-  const mutation = useMutation({
-    mutationFn: (values: z.infer<typeof formSchema>) => api.useCases.create({
-      ...values,
-      projectId,
-    }),
+  useEffect(() => {
+    if (useCase) {
+      form.reset({
+        name: useCase.name,
+        problemStatement: useCase.problemStatement || "",
+        valueHypothesis: useCase.valueHypothesis || "",
+        status: useCase.status,
+      });
+    }
+  }, [useCase, form]);
+
+  const createMutation = useMutation({
+    mutationFn: (values: FormValues) => api.useCases.create({ ...values, projectId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["useCases", projectId] });
       setOpen(false);
       form.reset();
       toast({
         title: "Use Case created",
-        description: "New functional requirement added.",
+        description: "New use case has been added.",
       });
+      onSuccess?.();
     },
     onError: (error: Error) => {
       toast({
@@ -79,22 +99,51 @@ export function CreateUseCaseDialog({ projectId }: { projectId: string }) {
     },
   });
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    mutation.mutate(values);
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<FormValues> }) =>
+      api.useCases.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["useCases", projectId] });
+      setOpen(false);
+      toast({
+        title: "Use Case updated",
+        description: "The use case has been updated.",
+      });
+      onSuccess?.();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update use case",
+        variant: "destructive",
+      });
+    },
+  });
+
+  function onSubmit(values: FormValues) {
+    if (isEditMode && useCase) {
+      updateMutation.mutate({ id: useCase.id, data: values });
+    } else {
+      createMutation.mutate(values);
+    }
   }
+
+  const isPending = createMutation.isPending || updateMutation.isPending;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline" className="gap-2" data-testid="button-add-usecase">
-          <Plus className="w-4 h-4" /> Add Use Case
-        </Button>
+        {trigger || (
+          <Button size="sm" variant="outline" className="gap-2" data-testid="button-add-usecase">
+            <Plus className="w-4 h-4" /> Add Use Case
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>New Use Case</DialogTitle>
+          <DialogTitle>{isEditMode ? "Edit Use Case" : "New Use Case"}</DialogTitle>
           <DialogDescription>
-            Define a new functional requirement or user story.
+            {isEditMode ? "Update use case details." : "Define a new functional requirement."}
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -112,7 +161,7 @@ export function CreateUseCaseDialog({ projectId }: { projectId: string }) {
                 </FormItem>
               )}
             />
-            
+
             <FormField
               control={form.control}
               name="problemStatement"
@@ -120,9 +169,10 @@ export function CreateUseCaseDialog({ projectId }: { projectId: string }) {
                 <FormItem>
                   <FormLabel>Problem Statement (Optional)</FormLabel>
                   <FormControl>
-                    <Textarea 
-                      placeholder="What problem does this solve?" 
-                      className="resize-none" 
+                    <Textarea
+                      placeholder="What problem does this solve?"
+                      className="resize-none"
+                      rows={2}
                       {...field}
                       data-testid="input-usecase-problem"
                     />
@@ -139,9 +189,10 @@ export function CreateUseCaseDialog({ projectId }: { projectId: string }) {
                 <FormItem>
                   <FormLabel>Value Hypothesis (Optional)</FormLabel>
                   <FormControl>
-                    <Textarea 
-                      placeholder="What value does this deliver?" 
-                      className="resize-none" 
+                    <Textarea
+                      placeholder="What value does this deliver?"
+                      className="resize-none"
+                      rows={2}
                       {...field}
                       data-testid="input-usecase-value"
                     />
@@ -157,7 +208,7 @@ export function CreateUseCaseDialog({ projectId }: { projectId: string }) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Status</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger data-testid="select-usecase-status">
                         <SelectValue placeholder="Select status" />
@@ -175,8 +226,8 @@ export function CreateUseCaseDialog({ projectId }: { projectId: string }) {
             />
 
             <DialogFooter>
-              <Button type="submit" disabled={mutation.isPending} data-testid="button-submit-usecase">
-                {mutation.isPending ? "Creating..." : "Create Use Case"}
+              <Button type="submit" disabled={isPending} data-testid="button-submit-usecase">
+                {isPending ? (isEditMode ? "Updating..." : "Creating...") : (isEditMode ? "Update Use Case" : "Create Use Case")}
               </Button>
             </DialogFooter>
           </form>
