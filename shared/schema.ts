@@ -322,3 +322,24 @@ export interface NextAction {
   severity: NextActionSeverity;
   category: "readiness" | "tasks" | "engagement" | "risks";
 }
+
+// AI Companion Types (not stored in DB, computed via AI)
+export const companionRequestSchema = z.object({
+  projectId: z.string().uuid("Invalid project ID format"),
+  message: z.string().min(1, "Message is required"),
+});
+
+export interface SuggestedTask {
+  title: string;
+  description: string;
+  priority: "low" | "medium" | "high" | "critical";
+}
+
+export interface CompanionResponse {
+  responseText: string;
+  assumptions: string[];
+  gaps: string[];
+  suggestedTasks: SuggestedTask[];
+}
+
+export type CompanionRequest = z.infer<typeof companionRequestSchema>;
