@@ -384,3 +384,30 @@ export interface StatusReport {
   nextWeekFocus: string[];
   openDecisions: string[];
 }
+
+// Timesheet Draft Types (not stored in DB, computed on-the-fly)
+export interface TimesheetHours {
+  clientMeetings: number;
+  internalPlanning: number;
+  researchAndDrafting: number;
+  admin: number;
+}
+
+export interface TimesheetEntry {
+  projectId: string;
+  projectName: string;
+  hours: TimesheetHours;
+  breakdown: {
+    meetingCount: number;
+    meetingMinutes: number;
+    taskCount: number;
+    fileCount: number;
+  };
+}
+
+export interface TimesheetResponse {
+  from: string;
+  to: string;
+  entries: TimesheetEntry[];
+  totalHours: TimesheetHours;
+}
