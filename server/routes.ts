@@ -13,6 +13,7 @@ import {
   insertFileEventSchema,
   insertEmailEventSchema,
   insertMeetingEventSchema,
+  type NextAction,
 } from "@shared/schema";
 import { fromError } from "zod-validation-error";
 
@@ -78,6 +79,103 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete project" });
+    }
+  });
+
+  // ============= NEXT ACTIONS (Suggestion Engine) =============
+
+  app.get("/api/projects/:id/next-actions", async (req, res) => {
+    try {
+      const projectId = req.params.id;
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const actions: NextAction[] = [];
+
+      // Fetch all related data for analysis
+      const [useCases, readinessScores, tasks, risks, events] = await Promise.all([
+        storage.getUseCases(projectId),
+        storage.getReadinessScores(),
+        storage.getTasks(projectId),
+        storage.getRisks(projectId),
+        storage.getEvents(projectId),
+      ]);
+
+      // 1. Check for UseCases without ReadinessScores
+      const useCaseIdsWithScores = new Set(readinessScores.map(rs => rs.useCaseId));
+      const useCasesWithoutScores = useCases.filter(uc => !useCaseIdsWithScores.has(uc.id));
+      
+      for (const useCase of useCasesWithoutScores) {
+        actions.push({
+          title: `Run readiness assessment for "${useCase.name}"`,
+          description: `Use case "${useCase.name}" has no readiness scores. Complete an assessment to track progress.`,
+          severity: "medium",
+          category: "readiness",
+        });
+      }
+
+      // 2. Check for overdue tasks
+      const now = new Date();
+      const overdueTasks = tasks.filter(task => {
+        if (task.status === "done") return false;
+        if (!task.dueDate) return false;
+        return new Date(task.dueDate) < now;
+      });
+
+      if (overdueTasks.length > 0) {
+        const taskNames = overdueTasks.slice(0, 3).map(t => t.title).join(", ");
+        const moreCount = overdueTasks.length > 3 ? ` and ${overdueTasks.length - 3} more` : "";
+        actions.push({
+          title: "Follow up on overdue tasks",
+          description: `${overdueTasks.length} task(s) are past due: ${taskNames}${moreCount}. Review and update their status.`,
+          severity: overdueTasks.length >= 5 ? "critical" : overdueTasks.length >= 3 ? "high" : "medium",
+          category: "tasks",
+        });
+      }
+
+      // 3. Check for no recent events (engagement gap)
+      const fourteenDaysAgo = new Date();
+      fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+      
+      const recentEvents = events.filter(e => new Date(e.occurredAt) >= fourteenDaysAgo);
+      
+      if (recentEvents.length === 0) {
+        actions.push({
+          title: "Schedule a client checkpoint meeting",
+          description: "No activity has been logged for this project in the last 14 days. Consider scheduling a sync with stakeholders.",
+          severity: "high",
+          category: "engagement",
+        });
+      }
+
+      // 4. Check for open risks without owners
+      const openRisksWithoutOwners = risks.filter(risk => {
+        const isOpen = risk.status === "identified" || risk.status === "analyzing";
+        const hasNoOwner = !risk.owner || risk.owner.trim() === "";
+        return isOpen && hasNoOwner;
+      });
+
+      if (openRisksWithoutOwners.length > 0) {
+        const riskTitles = openRisksWithoutOwners.slice(0, 3).map(r => r.title).join(", ");
+        const moreCount = openRisksWithoutOwners.length > 3 ? ` and ${openRisksWithoutOwners.length - 3} more` : "";
+        actions.push({
+          title: "Assign owners to risks",
+          description: `${openRisksWithoutOwners.length} open risk(s) have no assigned owner: ${riskTitles}${moreCount}.`,
+          severity: openRisksWithoutOwners.length >= 3 ? "high" : "medium",
+          category: "risks",
+        });
+      }
+
+      // Sort actions by severity (critical > high > medium > low)
+      const severityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+      actions.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+
+      res.json(actions);
+    } catch (error) {
+      console.error("Failed to compute next actions:", error);
+      res.status(500).json({ error: "Failed to compute next actions" });
     }
   });
 

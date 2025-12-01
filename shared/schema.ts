@@ -311,3 +311,14 @@ export type InsertStakeholder = z.infer<typeof insertStakeholderSchema>;
 
 export type Event = typeof events.$inferSelect;
 export type InsertEvent = z.infer<typeof insertEventSchema>;
+
+// Next Actions Types (not stored in DB, computed on-the-fly)
+export const nextActionSeverityEnum = ["low", "medium", "high", "critical"] as const;
+export type NextActionSeverity = (typeof nextActionSeverityEnum)[number];
+
+export interface NextAction {
+  title: string;
+  description: string;
+  severity: NextActionSeverity;
+  category: "readiness" | "tasks" | "engagement" | "risks";
+}
