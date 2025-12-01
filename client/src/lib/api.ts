@@ -157,6 +157,50 @@ export const api = {
       });
       return handleResponse(response);
     },
+    createFile: async (data: {
+      projectId: string;
+      fileName: string;
+      filePath: string;
+      fileType: string;
+      textSummary?: string;
+    }): Promise<Event> => {
+      const response = await fetch("/api/events/file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      return handleResponse(response);
+    },
+    createEmail: async (data: {
+      projectId: string;
+      from: string;
+      to: string;
+      subject: string;
+      bodySummary?: string;
+      sentAt?: string;
+    }): Promise<Event> => {
+      const response = await fetch("/api/events/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      return handleResponse(response);
+    },
+    createMeeting: async (data: {
+      projectId: string;
+      title: string;
+      attendees: string[];
+      startTime: string;
+      endTime: string;
+      meetingNotesSummary?: string;
+    }): Promise<Event> => {
+      const response = await fetch("/api/events/meeting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      return handleResponse(response);
+    },
     delete: async (id: string): Promise<void> => {
       const response = await fetch(`/api/events/${id}`, {
         method: "DELETE",

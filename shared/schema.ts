@@ -10,7 +10,7 @@ export const taskStatusEnum = pgEnum("task_status", ["todo", "in-progress", "rev
 export const taskPriorityEnum = pgEnum("task_priority", ["low", "medium", "high", "critical"]);
 export const riskCategoryEnum = pgEnum("risk_category", ["technical", "business", "operational", "security", "compliance"]);
 export const riskStatusEnum = pgEnum("risk_status", ["identified", "analyzing", "mitigating", "resolved", "accepted"]);
-export const eventTypeEnum = pgEnum("event_type", ["meeting", "email", "doc", "milestone", "decision"]);
+export const eventTypeEnum = pgEnum("event_type", ["meeting", "email", "file", "milestone", "decision"]);
 
 // Projects Table
 export const projects = pgTable("projects", {
@@ -256,6 +256,36 @@ export const insertEventSchema = createInsertSchema(events).omit({
 });
 
 export const selectEventSchema = createSelectSchema(events);
+
+export const insertFileEventSchema = z.object({
+  projectId: z.string().uuid("Invalid project ID format"),
+  fileName: z.string().min(1, "File name is required"),
+  filePath: z.string().min(1, "File path is required"),
+  fileType: z.string().min(1, "File type is required"),
+  textSummary: z.string().optional(),
+});
+
+export const insertEmailEventSchema = z.object({
+  projectId: z.string().uuid("Invalid project ID format"),
+  from: z.string().email("Invalid sender email format"),
+  to: z.string().min(1, "Recipient is required"),
+  subject: z.string().min(1, "Subject is required"),
+  bodySummary: z.string().optional(),
+  sentAt: z.string().datetime({ offset: true }).optional(),
+});
+
+export const insertMeetingEventSchema = z.object({
+  projectId: z.string().uuid("Invalid project ID format"),
+  title: z.string().min(1, "Meeting title is required"),
+  attendees: z.array(z.string()).min(1, "At least one attendee is required"),
+  startTime: z.string().datetime({ offset: true, message: "Invalid start time format" }),
+  endTime: z.string().datetime({ offset: true, message: "Invalid end time format" }),
+  meetingNotesSummary: z.string().optional(),
+});
+
+export type InsertFileEvent = z.infer<typeof insertFileEventSchema>;
+export type InsertEmailEvent = z.infer<typeof insertEmailEventSchema>;
+export type InsertMeetingEvent = z.infer<typeof insertMeetingEventSchema>;
 
 // TypeScript Types
 export type Project = typeof projects.$inferSelect;

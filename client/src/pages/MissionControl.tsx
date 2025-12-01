@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { api } from "@/lib/api";
-import type { Task, UseCase, Risk, Project } from "@shared/schema";
+import type { Task, UseCase, Risk, Project, Event } from "@shared/schema";
 import MissionControlLayout from "@/components/MissionControlLayout";
 import { CreateProjectDialog } from "@/components/CreateProjectDialog";
 import { CreateUseCaseDialog } from "@/components/CreateUseCaseDialog";
@@ -20,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -34,6 +34,10 @@ import {
   Briefcase,
   FileText,
   Target,
+  Activity,
+  Mail,
+  File,
+  Video,
 } from "lucide-react";
 
 function formatDate(date: Date | string | null | undefined): string {
@@ -418,6 +422,134 @@ function RisksTab({ projectId, risks }: { projectId: string; risks: Risk[] }) {
   );
 }
 
+function ActivityTab({ projectId, events }: { projectId: string; events: Event[] }) {
+  const getEventIcon = (type: string) => {
+    switch (type) {
+      case "file":
+        return <File className="w-4 h-4" />;
+      case "email":
+        return <Mail className="w-4 h-4" />;
+      case "meeting":
+        return <Video className="w-4 h-4" />;
+      default:
+        return <Activity className="w-4 h-4" />;
+    }
+  };
+
+  const getEventTypeColor = (type: string) => {
+    switch (type) {
+      case "file":
+        return "bg-blue-100 text-blue-700";
+      case "email":
+        return "bg-green-100 text-green-700";
+      case "meeting":
+        return "bg-purple-100 text-purple-700";
+      default:
+        return "bg-gray-100 text-gray-700";
+    }
+  };
+
+  const parseMetadata = (metadataJson: string | null) => {
+    if (!metadataJson) return null;
+    try {
+      return JSON.parse(metadataJson);
+    } catch {
+      return null;
+    }
+  };
+
+  const formatEventTime = (date: Date | string) => {
+    try {
+      const d = new Date(date);
+      return formatDistanceToNow(d, { addSuffix: true });
+    } catch {
+      return "—";
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+          <Activity className="w-5 h-5 text-muted-foreground" />
+          Activity ({events.length})
+        </h3>
+      </div>
+
+      {events.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            No activity recorded yet. Events from Finder and Outlook will appear here.
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {events.map((event) => {
+            const metadata = parseMetadata(event.metadataJson);
+            return (
+              <Card key={event.id} data-testid={`card-event-${event.id}`}>
+                <CardContent className="py-4">
+                  <div className="flex items-start gap-4">
+                    <div className={cn(
+                      "w-10 h-10 rounded-lg flex items-center justify-center shrink-0",
+                      getEventTypeColor(event.type)
+                    )}>
+                      {getEventIcon(event.type)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Badge variant="outline" className="capitalize text-xs">
+                          {event.type}
+                        </Badge>
+                        {event.sourceSystem && (
+                          <span className="text-xs text-muted-foreground font-mono">
+                            via {event.sourceSystem}
+                          </span>
+                        )}
+                        <span className="text-xs text-muted-foreground ml-auto">
+                          {formatEventTime(event.occurredAt)}
+                        </span>
+                      </div>
+                      <p className="font-medium text-sm">{event.title}</p>
+                      {event.description && (
+                        <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                          {event.description}
+                        </p>
+                      )}
+                      {metadata && event.type === "email" && (
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          <span>From: {metadata.from}</span>
+                          <span className="mx-2">→</span>
+                          <span>To: {metadata.to}</span>
+                        </div>
+                      )}
+                      {metadata && event.type === "meeting" && metadata.attendees && (
+                        <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+                          <Users className="w-3 h-3" />
+                          <span>
+                            {Array.isArray(metadata.attendees) 
+                              ? metadata.attendees.join(", ") 
+                              : metadata.attendees}
+                          </span>
+                        </div>
+                      )}
+                      {metadata && event.type === "file" && (
+                        <div className="mt-2 text-xs text-muted-foreground font-mono">
+                          {metadata.filePath}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MissionControl() {
   const params = useParams();
   const projectId = params.id;
@@ -443,6 +575,12 @@ export default function MissionControl() {
   const { data: risks = [] } = useQuery({
     queryKey: ["risks", projectId],
     queryFn: () => api.risks.list(projectId!),
+    enabled: !!projectId,
+  });
+
+  const { data: events = [] } = useQuery({
+    queryKey: ["events", projectId],
+    queryFn: () => api.events.list(projectId!),
     enabled: !!projectId,
   });
 
@@ -501,6 +639,10 @@ export default function MissionControl() {
               <AlertTriangle className="w-4 h-4 mr-2" />
               Risks
             </TabsTrigger>
+            <TabsTrigger value="activity" data-testid="tab-activity">
+              <Activity className="w-4 h-4 mr-2" />
+              Activity
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="summary">
@@ -517,6 +659,10 @@ export default function MissionControl() {
 
           <TabsContent value="risks">
             <RisksTab projectId={project.id} risks={risks} />
+          </TabsContent>
+
+          <TabsContent value="activity">
+            <ActivityTab projectId={project.id} events={events} />
           </TabsContent>
         </Tabs>
       </div>

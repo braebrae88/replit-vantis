@@ -10,6 +10,9 @@ import {
   insertTaskSchema,
   insertStakeholderSchema,
   insertEventSchema,
+  insertFileEventSchema,
+  insertEmailEventSchema,
+  insertMeetingEventSchema,
 } from "@shared/schema";
 import { fromError } from "zod-validation-error";
 
@@ -493,6 +496,109 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete event" });
+    }
+  });
+
+  // ============= EVENT INGESTION ENDPOINTS =============
+
+  app.post("/api/events/file", async (req, res) => {
+    try {
+      const result = insertFileEventSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ error: fromError(result.error).toString() });
+      }
+
+      const { projectId, fileName, filePath, fileType, textSummary } = result.data;
+
+      const metadata = {
+        fileName,
+        filePath,
+        fileType,
+        textSummary: textSummary || null,
+      };
+
+      const event = await storage.createEvent({
+        projectId,
+        type: "file",
+        sourceSystem: "finder",
+        title: `File: ${fileName}`,
+        description: textSummary || `${fileType} file at ${filePath}`,
+        occurredAt: new Date(),
+        metadataJson: JSON.stringify(metadata),
+      });
+
+      res.status(201).json(event);
+    } catch (error) {
+      console.error("Failed to create file event:", error);
+      res.status(500).json({ error: "Failed to create file event" });
+    }
+  });
+
+  app.post("/api/events/email", async (req, res) => {
+    try {
+      const result = insertEmailEventSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ error: fromError(result.error).toString() });
+      }
+
+      const { projectId, from, to, subject, bodySummary, sentAt } = result.data;
+
+      const metadata = {
+        from,
+        to,
+        subject,
+        bodySummary: bodySummary || null,
+        sentAt: sentAt || new Date().toISOString(),
+      };
+
+      const event = await storage.createEvent({
+        projectId,
+        type: "email",
+        sourceSystem: "outlook",
+        title: `Email: ${subject}`,
+        description: bodySummary || `From ${from} to ${to}`,
+        occurredAt: sentAt ? new Date(sentAt) : new Date(),
+        metadataJson: JSON.stringify(metadata),
+      });
+
+      res.status(201).json(event);
+    } catch (error) {
+      console.error("Failed to create email event:", error);
+      res.status(500).json({ error: "Failed to create email event" });
+    }
+  });
+
+  app.post("/api/events/meeting", async (req, res) => {
+    try {
+      const result = insertMeetingEventSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ error: fromError(result.error).toString() });
+      }
+
+      const { projectId, title, attendees, startTime, endTime, meetingNotesSummary } = result.data;
+
+      const metadata = {
+        title,
+        attendees,
+        startTime,
+        endTime,
+        meetingNotesSummary: meetingNotesSummary || null,
+      };
+
+      const event = await storage.createEvent({
+        projectId,
+        type: "meeting",
+        sourceSystem: "outlook",
+        title: `Meeting: ${title}`,
+        description: meetingNotesSummary || `With ${attendees.join(", ")}`,
+        occurredAt: new Date(startTime),
+        metadataJson: JSON.stringify(metadata),
+      });
+
+      res.status(201).json(event);
+    } catch (error) {
+      console.error("Failed to create meeting event:", error);
+      res.status(500).json({ error: "Failed to create meeting event" });
     }
   });
 
