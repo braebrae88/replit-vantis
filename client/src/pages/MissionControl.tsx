@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { api } from "@/lib/api";
-import type { Task, UseCase, Risk, Project, Event, NextAction, CompanionResponse, SuggestedTask } from "@shared/schema";
+import type { Task, UseCase, Risk, Project, Event, NextAction, CompanionResponse, SuggestedTask, StatusReport } from "@shared/schema";
 import { useState } from "react";
 import MissionControlLayout from "@/components/MissionControlLayout";
 import { CreateProjectDialog } from "@/components/CreateProjectDialog";
@@ -57,6 +57,11 @@ import {
   Loader2,
   CircleDot,
   ListTodo,
+  FileBarChart,
+  Copy,
+  Check,
+  Sparkles,
+  TrendingUp,
 } from "lucide-react";
 
 function formatDate(date: Date | string | null | undefined): string {
@@ -890,6 +895,382 @@ function VantisCompanionPanel({ projectId }: { projectId: string }) {
   );
 }
 
+function StatusReportTab({ projectId }: { projectId: string }) {
+  const [report, setReport] = useState<StatusReport | null>(null);
+  const [copied, setCopied] = useState(false);
+  const { toast } = useToast();
+
+  const mutation = useMutation({
+    mutationFn: () => api.statusReport.generate(projectId),
+    onSuccess: (data) => {
+      setReport(data);
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to generate report",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const formatReportForEmail = () => {
+    if (!report) return "";
+    
+    const lines = [
+      `Weekly Status Report: ${report.projectName}`,
+      `Generated: ${format(new Date(report.generatedAt), "MMMM d, yyyy")}`,
+      `Report Period: ${format(new Date(report.reportPeriod.start), "MMM d")} - ${format(new Date(report.reportPeriod.end), "MMM d, yyyy")}`,
+      "",
+      "## HIGHLIGHTS",
+      ...report.highlights.map((h) => `• ${h}`),
+      "",
+    ];
+
+    if (report.completedTasks.length > 0) {
+      lines.push("## COMPLETED TASKS");
+      report.completedTasks.forEach((t) => {
+        lines.push(`• ${t.title}`);
+      });
+      lines.push("");
+    }
+
+    if (report.newOpenTasks.length > 0) {
+      lines.push("## NEW OPEN TASKS");
+      report.newOpenTasks.forEach((t) => {
+        lines.push(`• ${t.title} (${t.status})`);
+      });
+      lines.push("");
+    }
+
+    if (report.recentEvents.length > 0) {
+      lines.push("## RECENT ACTIVITY");
+      report.recentEvents.forEach((e) => {
+        lines.push(`• [${e.type.toUpperCase()}] ${e.title}`);
+      });
+      lines.push("");
+    }
+
+    if (report.risks.length > 0) {
+      lines.push("## RISKS & ISSUES");
+      report.risks.forEach((r) => {
+        lines.push(`• ${r.title} (${r.category}, ${r.status})`);
+      });
+      lines.push("");
+    }
+
+    if (report.nextWeekFocus.length > 0) {
+      lines.push("## NEXT WEEK FOCUS");
+      report.nextWeekFocus.forEach((f) => {
+        lines.push(`• ${f}`);
+      });
+      lines.push("");
+    }
+
+    if (report.openDecisions.length > 0) {
+      lines.push("## OPEN DECISIONS");
+      report.openDecisions.forEach((d) => {
+        lines.push(`• ${d}`);
+      });
+    }
+
+    return lines.join("\n");
+  };
+
+  const copyToClipboard = async () => {
+    if (!report) {
+      toast({
+        title: "No report available",
+        description: "Please generate a report first",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    try {
+      const text = formatReportForEmail();
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      toast({
+        title: "Copied to clipboard",
+        description: "Report copied and ready to paste into your email",
+      });
+    } catch (error) {
+      toast({
+        title: "Copy failed",
+        description: "Unable to copy to clipboard. Please try selecting and copying the text manually.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <FileBarChart className="w-5 h-5" />
+                Weekly Status Report
+              </CardTitle>
+              <CardDescription>
+                Generate a summary of the past 7 days to share with stakeholders
+              </CardDescription>
+            </div>
+            <div className="flex gap-2">
+              {report && (
+                <Button
+                  variant="outline"
+                  onClick={copyToClipboard}
+                  data-testid="button-copy-report"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-4 h-4 mr-2" />
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4 mr-2" />
+                      Copy for Email
+                    </>
+                  )}
+                </Button>
+              )}
+              <Button
+                onClick={() => mutation.mutate()}
+                disabled={mutation.isPending}
+                data-testid="button-generate-report"
+              >
+                {mutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Generate Report
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+      </Card>
+
+      {report && (
+        <div className="space-y-6">
+          <Card className="border-primary/20 bg-primary/5">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">{report.projectName}</CardTitle>
+                <Badge variant="outline" className="font-mono text-xs">
+                  {format(new Date(report.reportPeriod.start), "MMM d")} - {format(new Date(report.reportPeriod.end), "MMM d, yyyy")}
+                </Badge>
+              </div>
+              <CardDescription>
+                Generated {format(new Date(report.generatedAt), "MMMM d, yyyy 'at' h:mm a")}
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <Card data-testid="section-highlights">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-green-600" />
+                  Highlights
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2">
+                  {report.highlights.map((h, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
+                      <span>{h}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+
+            <Card data-testid="section-risks">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-orange-600" />
+                  Risks & Issues
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {report.risks.length > 0 ? (
+                  <ul className="space-y-2">
+                    {report.risks.map((r) => (
+                      <li key={r.id} className="flex items-start gap-2 text-sm">
+                        <AlertTriangle className="w-4 h-4 text-orange-600 mt-0.5 shrink-0" />
+                        <div>
+                          <span className="font-medium">{r.title}</span>
+                          <div className="text-xs text-muted-foreground">
+                            {r.category} • {r.status}
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No new risks this week</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <Card data-testid="section-completed-tasks">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                  Completed Tasks ({report.completedTasks.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {report.completedTasks.length > 0 ? (
+                  <ul className="space-y-2">
+                    {report.completedTasks.map((t) => (
+                      <li key={t.id} className="flex items-start gap-2 text-sm">
+                        <CheckCircle2 className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+                        <span>{t.title}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No tasks completed this week</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card data-testid="section-new-tasks">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <ListTodo className="w-4 h-4 text-purple-600" />
+                  New Open Tasks ({report.newOpenTasks.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {report.newOpenTasks.length > 0 ? (
+                  <ul className="space-y-2">
+                    {report.newOpenTasks.map((t) => (
+                      <li key={t.id} className="flex items-start gap-2 text-sm">
+                        <Clock className="w-4 h-4 text-purple-600 mt-0.5 shrink-0" />
+                        <div>
+                          <span>{t.title}</span>
+                          <Badge variant="outline" className="ml-2 text-xs capitalize">
+                            {t.status}
+                          </Badge>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No new tasks this week</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <Card data-testid="section-next-week">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Target className="w-4 h-4 text-indigo-600" />
+                  Next Week Focus
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2">
+                  {report.nextWeekFocus.map((f, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm">
+                      <Target className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+
+            <Card data-testid="section-open-decisions">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-amber-600" />
+                  Open Decisions
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {report.openDecisions.length > 0 ? (
+                  <ul className="space-y-2">
+                    {report.openDecisions.map((d, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm">
+                        <MessageSquare className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                        <span>{d}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No pending decisions</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {report.recentEvents.length > 0 && (
+            <Card data-testid="section-recent-events">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-cyan-600" />
+                  Recent Activity ({report.recentEvents.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {report.recentEvents.map((e) => (
+                    <div key={e.id} className="flex items-start gap-2 text-sm p-2 rounded-lg bg-muted/50">
+                      {e.type === "meeting" && <Video className="w-4 h-4 text-cyan-600 mt-0.5 shrink-0" />}
+                      {e.type === "email" && <Mail className="w-4 h-4 text-cyan-600 mt-0.5 shrink-0" />}
+                      {e.type === "file" && <File className="w-4 h-4 text-cyan-600 mt-0.5 shrink-0" />}
+                      {!["meeting", "email", "file"].includes(e.type) && (
+                        <Activity className="w-4 h-4 text-cyan-600 mt-0.5 shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{e.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(e.occurredAt), "MMM d, h:mm a")}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {!report && !mutation.isPending && (
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <FileBarChart className="w-12 h-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium mb-2">No Report Generated</h3>
+            <p className="text-sm text-muted-foreground text-center max-w-md">
+              Click the "Generate Report" button above to create a weekly status report summarizing your project's progress.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 export default function MissionControl() {
   const params = useParams();
   const projectId = params.id;
@@ -985,6 +1366,10 @@ export default function MissionControl() {
               <Activity className="w-4 h-4 mr-2" />
               Activity
             </TabsTrigger>
+            <TabsTrigger value="status-report" data-testid="tab-status-report">
+              <FileBarChart className="w-4 h-4 mr-2" />
+              Status Report
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="summary">
@@ -1005,6 +1390,10 @@ export default function MissionControl() {
 
           <TabsContent value="activity">
             <ActivityTab projectId={project.id} events={events} />
+          </TabsContent>
+
+          <TabsContent value="status-report">
+            <StatusReportTab projectId={project.id} />
           </TabsContent>
         </Tabs>
       </div>

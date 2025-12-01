@@ -16,6 +16,7 @@ import {
   companionRequestSchema,
   type NextAction,
   type CompanionResponse,
+  type StatusReport,
 } from "@shared/schema";
 import { fromError } from "zod-validation-error";
 
@@ -763,6 +764,151 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Failed to process companion request:", error);
       res.status(500).json({ error: "Failed to process companion request" });
+    }
+  });
+
+  // ============= WEEKLY STATUS REPORT =============
+
+  app.get("/api/projects/:id/status-report", async (req, res) => {
+    try {
+      const projectId = req.params.id;
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const now = new Date();
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      // Fetch all related data
+      const [tasks, risks, events] = await Promise.all([
+        storage.getTasks(projectId),
+        storage.getRisks(projectId),
+        storage.getEvents(projectId),
+      ]);
+
+      // Tasks completed in the last 7 days
+      const completedTasks = tasks
+        .filter(
+          (t) =>
+            t.status === "done" &&
+            t.updatedAt &&
+            new Date(t.updatedAt) >= sevenDaysAgo
+        )
+        .map((t) => ({
+          id: t.id,
+          title: t.title,
+          status: t.status,
+          completedAt: t.updatedAt?.toISOString(),
+        }));
+
+      // New open tasks (created in last 7 days and not done)
+      const newOpenTasks = tasks
+        .filter(
+          (t) =>
+            t.status !== "done" &&
+            t.createdAt &&
+            new Date(t.createdAt) >= sevenDaysAgo
+        )
+        .map((t) => ({
+          id: t.id,
+          title: t.title,
+          status: t.status,
+        }));
+
+      // Events in the last 7 days
+      const recentEvents = events
+        .filter((e) => e.occurredAt && new Date(e.occurredAt) >= sevenDaysAgo)
+        .map((e) => ({
+          id: e.id,
+          type: e.type,
+          title: e.title,
+          occurredAt: e.occurredAt.toISOString(),
+        }));
+
+      // New or updated risks in the last 7 days
+      const recentRisks = risks
+        .filter(
+          (r) =>
+            (r.createdAt && new Date(r.createdAt) >= sevenDaysAgo) ||
+            (r.updatedAt && new Date(r.updatedAt) >= sevenDaysAgo)
+        )
+        .map((r) => ({
+          id: r.id,
+          title: r.title,
+          category: r.category,
+          status: r.status,
+          likelihood: r.likelihood,
+          impact: r.impact,
+        }));
+
+      // Generate highlights based on data
+      const highlights: string[] = [];
+      if (completedTasks.length > 0) {
+        highlights.push(
+          `Completed ${completedTasks.length} task${completedTasks.length > 1 ? "s" : ""} this week`
+        );
+      }
+      if (recentEvents.length > 0) {
+        const meetings = recentEvents.filter((e) => e.type === "meeting").length;
+        const emails = recentEvents.filter((e) => e.type === "email").length;
+        const files = recentEvents.filter((e) => e.type === "file").length;
+        if (meetings > 0) highlights.push(`${meetings} meeting${meetings > 1 ? "s" : ""} held`);
+        if (emails > 0) highlights.push(`${emails} email${emails > 1 ? "s" : ""} exchanged`);
+        if (files > 0) highlights.push(`${files} document${files > 1 ? "s" : ""} shared`);
+      }
+      if (highlights.length === 0) {
+        highlights.push("No significant activity recorded this week");
+      }
+
+      // Generate next week focus based on open tasks
+      const nextWeekFocus: string[] = [];
+      const highPriorityTasks = tasks.filter(
+        (t) => t.status !== "done" && (t.priority === "high" || t.priority === "critical")
+      );
+      for (const task of highPriorityTasks.slice(0, 3)) {
+        nextWeekFocus.push(`${task.title}${task.dueDate ? ` (due ${new Date(task.dueDate).toLocaleDateString()})` : ""}`);
+      }
+      if (nextWeekFocus.length === 0) {
+        const openTasks = tasks.filter((t) => t.status !== "done").slice(0, 3);
+        for (const task of openTasks) {
+          nextWeekFocus.push(task.title);
+        }
+      }
+      if (nextWeekFocus.length === 0) {
+        nextWeekFocus.push("Continue with current activities");
+      }
+
+      // Generate open decisions based on unmitigated risks
+      const openDecisions: string[] = [];
+      const unresolvedRisks = risks.filter(
+        (r) => r.status === "identified" || r.status === "analyzing"
+      );
+      for (const risk of unresolvedRisks.slice(0, 3)) {
+        openDecisions.push(`Decide mitigation approach for: ${risk.title}`);
+      }
+
+      const report: StatusReport = {
+        projectId: project.id,
+        projectName: project.name,
+        generatedAt: now.toISOString(),
+        reportPeriod: {
+          start: sevenDaysAgo.toISOString(),
+          end: now.toISOString(),
+        },
+        highlights,
+        completedTasks,
+        newOpenTasks,
+        recentEvents,
+        risks: recentRisks,
+        nextWeekFocus,
+        openDecisions,
+      };
+
+      res.json(report);
+    } catch (error) {
+      console.error("Failed to generate status report:", error);
+      res.status(500).json({ error: "Failed to generate status report" });
     }
   });
 

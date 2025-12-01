@@ -17,6 +17,7 @@ import type {
   InsertReadinessScore,
   NextAction,
   CompanionResponse,
+  StatusReport,
 } from "@shared/schema";
 
 async function handleResponse<T>(response: Response): Promise<T> {
@@ -377,6 +378,14 @@ export const api = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId, message }),
       });
+      return handleResponse(response);
+    },
+  },
+
+  // Status Report
+  statusReport: {
+    generate: async (projectId: string): Promise<StatusReport> => {
+      const response = await fetch(`/api/projects/${projectId}/status-report`);
       return handleResponse(response);
     },
   },
