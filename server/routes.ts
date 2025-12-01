@@ -20,6 +20,9 @@ import {
   type TimesheetResponse,
   type TimesheetEntry,
   type TimesheetHours,
+  type RoadmapResponse,
+  type RoadmapWeek,
+  type RoadmapTask,
 } from "@shared/schema";
 import { fromError } from "zod-validation-error";
 
@@ -1045,6 +1048,131 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Failed to generate timesheet:", error);
       res.status(500).json({ error: "Failed to generate timesheet" });
+    }
+  });
+
+  // ============= ROADMAP =============
+
+  app.get("/api/projects/:id/roadmap", async (req, res) => {
+    try {
+      const projectId = req.params.id;
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const [tasks, useCases] = await Promise.all([
+        storage.getTasks(projectId),
+        storage.getUseCases(projectId),
+      ]);
+
+      const useCaseMap = new Map(useCases.map((uc) => [uc.id, uc.name]));
+
+      const mapToRoadmapTask = (task: typeof tasks[0]): RoadmapTask => ({
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        owner: task.owner,
+        status: task.status,
+        priority: task.priority,
+        startDate: task.startDate?.toISOString() || null,
+        endDate: task.endDate?.toISOString() || null,
+        dueDate: task.dueDate?.toISOString() || null,
+        useCaseId: task.useCaseId,
+        useCaseName: task.useCaseId ? useCaseMap.get(task.useCaseId) || null : null,
+      });
+
+      const scheduledTasks = tasks.filter((t) => t.startDate && t.endDate);
+      const unscheduledTasks = tasks
+        .filter((t) => !t.startDate || !t.endDate)
+        .map(mapToRoadmapTask);
+
+      if (scheduledTasks.length === 0) {
+        const response: RoadmapResponse = {
+          projectId,
+          projectName: project.name,
+          weeks: [],
+          unscheduledTasks,
+          dateRange: {
+            start: new Date().toISOString(),
+            end: new Date().toISOString(),
+          },
+        };
+        return res.json(response);
+      }
+
+      const allDates = scheduledTasks.flatMap((t) => [
+        new Date(t.startDate!),
+        new Date(t.endDate!),
+      ]);
+      const minDate = new Date(Math.min(...allDates.map((d) => d.getTime())));
+      const maxDate = new Date(Math.max(...allDates.map((d) => d.getTime())));
+
+      const getWeekStart = (date: Date): Date => {
+        const d = new Date(date);
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        d.setDate(diff);
+        d.setHours(0, 0, 0, 0);
+        return d;
+      };
+
+      const getWeekEnd = (weekStart: Date): Date => {
+        const d = new Date(weekStart);
+        d.setDate(d.getDate() + 6);
+        d.setHours(23, 59, 59, 999);
+        return d;
+      };
+
+      const formatWeekLabel = (start: Date, end: Date): string => {
+        const startMonth = start.toLocaleString("en-US", { month: "short" });
+        const endMonth = end.toLocaleString("en-US", { month: "short" });
+        if (startMonth === endMonth) {
+          return `${startMonth} ${start.getDate()}-${end.getDate()}`;
+        }
+        return `${startMonth} ${start.getDate()} - ${endMonth} ${end.getDate()}`;
+      };
+
+      const weeks: RoadmapWeek[] = [];
+      let currentWeekStart = getWeekStart(minDate);
+
+      while (currentWeekStart <= maxDate) {
+        const weekEnd = getWeekEnd(currentWeekStart);
+
+        const weekTasks = scheduledTasks
+          .filter((t) => {
+            const taskStart = new Date(t.startDate!);
+            const taskEnd = new Date(t.endDate!);
+            return taskStart <= weekEnd && taskEnd >= currentWeekStart;
+          })
+          .map(mapToRoadmapTask);
+
+        weeks.push({
+          weekStart: currentWeekStart.toISOString(),
+          weekEnd: weekEnd.toISOString(),
+          weekLabel: formatWeekLabel(currentWeekStart, weekEnd),
+          tasks: weekTasks,
+        });
+
+        currentWeekStart = new Date(currentWeekStart);
+        currentWeekStart.setDate(currentWeekStart.getDate() + 7);
+      }
+
+      const response: RoadmapResponse = {
+        projectId,
+        projectName: project.name,
+        weeks,
+        unscheduledTasks,
+        dateRange: {
+          start: minDate.toISOString(),
+          end: maxDate.toISOString(),
+        },
+      };
+
+      res.json(response);
+    } catch (error) {
+      console.error("Failed to generate roadmap:", error);
+      res.status(500).json({ error: "Failed to generate roadmap" });
     }
   });
 

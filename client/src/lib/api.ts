@@ -19,6 +19,7 @@ import type {
   CompanionResponse,
   StatusReport,
   TimesheetResponse,
+  RoadmapResponse,
 } from "@shared/schema";
 
 async function handleResponse<T>(response: Response): Promise<T> {
@@ -395,6 +396,13 @@ export const api = {
   timesheet: {
     generate: async (from: string, to: string): Promise<TimesheetResponse> => {
       const response = await fetch(`/api/timesheet?from=${from}&to=${to}`);
+      return handleResponse(response);
+    },
+  },
+
+  roadmap: {
+    get: async (projectId: string): Promise<RoadmapResponse> => {
+      const response = await fetch(`/api/projects/${projectId}/roadmap`);
       return handleResponse(response);
     },
   },

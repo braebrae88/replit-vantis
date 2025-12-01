@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { api } from "@/lib/api";
-import type { Task, UseCase, Risk, Project, Event, NextAction, CompanionResponse, SuggestedTask, StatusReport } from "@shared/schema";
+import type { Task, UseCase, Risk, Project, Event, NextAction, CompanionResponse, SuggestedTask, StatusReport, RoadmapResponse, RoadmapTask, RoadmapWeek } from "@shared/schema";
 import { useState } from "react";
 import MissionControlLayout from "@/components/MissionControlLayout";
 import { CreateProjectDialog } from "@/components/CreateProjectDialog";
@@ -62,6 +62,7 @@ import {
   Check,
   Sparkles,
   TrendingUp,
+  Map,
 } from "lucide-react";
 
 function formatDate(date: Date | string | null | undefined): string {
@@ -1271,6 +1272,261 @@ function StatusReportTab({ projectId }: { projectId: string }) {
   );
 }
 
+function RoadmapTab({ projectId }: { projectId: string }) {
+  const { data: roadmap, isLoading } = useQuery({
+    queryKey: ["roadmap", projectId],
+    queryFn: () => api.roadmap.get(projectId),
+  });
+
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case "critical":
+        return "bg-red-100 text-red-800 border-red-200";
+      case "high":
+        return "bg-orange-100 text-orange-800 border-orange-200";
+      case "medium":
+        return "bg-yellow-100 text-yellow-800 border-yellow-200";
+      case "low":
+        return "bg-green-100 text-green-800 border-green-200";
+      default:
+        return "bg-gray-100 text-gray-800 border-gray-200";
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "done":
+        return "bg-green-500";
+      case "in-progress":
+        return "bg-blue-500";
+      case "review":
+        return "bg-purple-500";
+      default:
+        return "bg-gray-400";
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (!roadmap) {
+    return (
+      <Card className="border-dashed">
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <Map className="w-12 h-12 text-muted-foreground mb-4" />
+          <h3 className="text-lg font-medium mb-2">No Roadmap Data</h3>
+          <p className="text-sm text-muted-foreground text-center max-w-md">
+            Unable to load roadmap data. Please try again later.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const hasScheduledTasks = roadmap.weeks.length > 0;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold" data-testid="text-roadmap-title">Project Roadmap</h2>
+          <p className="text-sm text-muted-foreground">
+            {hasScheduledTasks
+              ? `${format(new Date(roadmap.dateRange.start), "MMM d, yyyy")} - ${format(new Date(roadmap.dateRange.end), "MMM d, yyyy")}`
+              : "No scheduled tasks yet"}
+          </p>
+        </div>
+      </div>
+
+      {hasScheduledTasks && (
+        <Card data-testid="card-timeline">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Calendar className="w-4 h-4" />
+              Timeline View
+            </CardTitle>
+            <CardDescription>
+              Tasks are displayed across weeks based on their start and end dates
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-[200px] sticky left-0 bg-background z-10">Task</TableHead>
+                    {roadmap.weeks.map((week) => (
+                      <TableHead
+                        key={week.weekStart}
+                        className="min-w-[120px] text-center"
+                        data-testid={`header-week-${week.weekLabel}`}
+                      >
+                        <div className="text-xs font-medium">{week.weekLabel}</div>
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {Array.from(
+                    new Set(roadmap.weeks.flatMap((w) => w.tasks.map((t) => t.id)))
+                  ).map((taskId) => {
+                    const task = roadmap.weeks
+                      .flatMap((w) => w.tasks)
+                      .find((t) => t.id === taskId);
+                    if (!task) return null;
+
+                    return (
+                      <TableRow key={taskId} data-testid={`row-task-${taskId}`}>
+                        <TableCell className="sticky left-0 bg-background z-10 min-w-[200px]">
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                              <div className={cn("w-2 h-2 rounded-full", getStatusColor(task.status))} />
+                              <span className="font-medium text-sm truncate max-w-[180px]" title={task.title}>
+                                {task.title}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge
+                                variant="outline"
+                                className={cn("text-xs", getPriorityColor(task.priority))}
+                              >
+                                {task.priority}
+                              </Badge>
+                              {task.owner && (
+                                <span className="text-xs text-muted-foreground truncate max-w-[100px]" title={task.owner}>
+                                  {task.owner}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                        {roadmap.weeks.map((week) => {
+                          const isInWeek = week.tasks.some((t) => t.id === taskId);
+                          return (
+                            <TableCell
+                              key={week.weekStart}
+                              className="text-center"
+                            >
+                              {isInWeek && (
+                                <div
+                                  className={cn(
+                                    "h-6 rounded mx-1",
+                                    task.status === "done"
+                                      ? "bg-green-200 border border-green-300"
+                                      : task.status === "in-progress"
+                                        ? "bg-blue-200 border border-blue-300"
+                                        : task.status === "review"
+                                          ? "bg-purple-200 border border-purple-300"
+                                          : "bg-gray-200 border border-gray-300"
+                                  )}
+                                  title={`${task.title} (${task.status})`}
+                                />
+                              )}
+                            </TableCell>
+                          );
+                        })}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="flex items-center gap-4 mt-4 pt-4 border-t text-xs text-muted-foreground">
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded bg-gray-200 border border-gray-300" />
+                <span>To Do</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded bg-blue-200 border border-blue-300" />
+                <span>In Progress</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded bg-purple-200 border border-purple-300" />
+                <span>Review</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded bg-green-200 border border-green-300" />
+                <span>Done</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {roadmap.unscheduledTasks.length > 0 && (
+        <Card data-testid="card-unscheduled">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Clock className="w-4 h-4 text-orange-600" />
+              Unscheduled Tasks ({roadmap.unscheduledTasks.length})
+            </CardTitle>
+            <CardDescription>
+              Tasks without start and end dates. Add dates to include them in the timeline.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {roadmap.unscheduledTasks.map((task) => (
+                <div
+                  key={task.id}
+                  className="p-3 rounded-lg border bg-muted/30"
+                  data-testid={`card-unscheduled-${task.id}`}
+                >
+                  <div className="flex items-start gap-2">
+                    <div className={cn("w-2 h-2 mt-1.5 rounded-full shrink-0", getStatusColor(task.status))} />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-sm truncate" title={task.title}>
+                        {task.title}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge
+                          variant="outline"
+                          className={cn("text-xs", getPriorityColor(task.priority))}
+                        >
+                          {task.priority}
+                        </Badge>
+                        {task.owner && (
+                          <span className="text-xs text-muted-foreground truncate" title={task.owner}>
+                            {task.owner}
+                          </span>
+                        )}
+                      </div>
+                      {task.dueDate && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Due: {format(new Date(task.dueDate), "MMM d, yyyy")}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {!hasScheduledTasks && roadmap.unscheduledTasks.length === 0 && (
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <Map className="w-12 h-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium mb-2">No Tasks Yet</h3>
+            <p className="text-sm text-muted-foreground text-center max-w-md">
+              Create tasks and add start/end dates to see them on the roadmap timeline.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 export default function MissionControl() {
   const params = useParams();
   const projectId = params.id;
@@ -1370,6 +1626,10 @@ export default function MissionControl() {
               <FileBarChart className="w-4 h-4 mr-2" />
               Status Report
             </TabsTrigger>
+            <TabsTrigger value="roadmap" data-testid="tab-roadmap">
+              <Map className="w-4 h-4 mr-2" />
+              Roadmap
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="summary">
@@ -1394,6 +1654,10 @@ export default function MissionControl() {
 
           <TabsContent value="status-report">
             <StatusReportTab projectId={project.id} />
+          </TabsContent>
+
+          <TabsContent value="roadmap">
+            <RoadmapTab projectId={project.id} />
           </TabsContent>
         </Tabs>
       </div>

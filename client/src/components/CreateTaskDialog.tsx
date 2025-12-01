@@ -40,6 +40,8 @@ const formSchema = z.object({
   owner: z.string().optional(),
   status: z.enum(["todo", "in-progress", "review", "done"]),
   priority: z.enum(["low", "medium", "high", "critical"]),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
 });
 
 export function CreateTaskDialog({ projectId, useCaseId }: { projectId: string, useCaseId?: string }) {
@@ -55,12 +57,20 @@ export function CreateTaskDialog({ projectId, useCaseId }: { projectId: string, 
       status: "todo",
       priority: "medium",
       owner: "",
+      startDate: "",
+      endDate: "",
     },
   });
 
   const mutation = useMutation({
     mutationFn: (values: z.infer<typeof formSchema>) => api.tasks.create({
-      ...values,
+      title: values.title,
+      description: values.description || null,
+      owner: values.owner || null,
+      status: values.status,
+      priority: values.priority,
+      startDate: values.startDate ? new Date(values.startDate) : null,
+      endDate: values.endDate ? new Date(values.endDate) : null,
       projectId,
       useCaseId: useCaseId || null,
     }),
@@ -185,6 +195,35 @@ export function CreateTaskDialog({ projectId, useCaseId }: { projectId: string, 
                         <SelectItem value="done">Done</SelectItem>
                       </SelectContent>
                     </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="startDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Start Date (Optional)</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} data-testid="input-task-start-date" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="endDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>End Date (Optional)</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} data-testid="input-task-end-date" />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
