@@ -86,6 +86,8 @@ export const tasks = pgTable("tasks", {
   description: text("description"),
   owner: text("owner"),
   dueDate: timestamp("due_date"),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
   status: taskStatusEnum("status").notNull().default("todo"),
   priority: taskPriorityEnum("priority").notNull().default("medium"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -410,4 +412,37 @@ export interface TimesheetResponse {
   to: string;
   entries: TimesheetEntry[];
   totalHours: TimesheetHours;
+}
+
+// Roadmap Types (not stored in DB, computed on-the-fly)
+export interface RoadmapTask {
+  id: string;
+  title: string;
+  description: string | null;
+  owner: string | null;
+  status: (typeof taskStatusEnum.enumValues)[number];
+  priority: (typeof taskPriorityEnum.enumValues)[number];
+  startDate: string | null;
+  endDate: string | null;
+  dueDate: string | null;
+  useCaseId: string | null;
+  useCaseName: string | null;
+}
+
+export interface RoadmapWeek {
+  weekStart: string;
+  weekEnd: string;
+  weekLabel: string;
+  tasks: RoadmapTask[];
+}
+
+export interface RoadmapResponse {
+  projectId: string;
+  projectName: string;
+  weeks: RoadmapWeek[];
+  unscheduledTasks: RoadmapTask[];
+  dateRange: {
+    start: string;
+    end: string;
+  };
 }
