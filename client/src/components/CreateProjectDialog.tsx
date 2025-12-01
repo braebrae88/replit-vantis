@@ -2,7 +2,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/mockApi";
+import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -21,6 +21,13 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -30,7 +37,8 @@ import { useState } from "react";
 const formSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   description: z.string().min(5, "Description must be at least 5 characters"),
-  status: z.enum(["active", "planning", "completed", "archived"]),
+  clientName: z.string().optional(),
+  phase: z.enum(["discovery", "design", "development", "deployment", "maintenance"]),
 });
 
 export function CreateProjectDialog() {
@@ -43,7 +51,8 @@ export function CreateProjectDialog() {
     defaultValues: {
       name: "",
       description: "",
-      status: "planning",
+      clientName: "",
+      phase: "discovery",
     },
   });
 
@@ -58,6 +67,13 @@ export function CreateProjectDialog() {
         description: "The new project has been successfully initialized.",
       });
     },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create project",
+        variant: "destructive",
+      });
+    },
   });
 
   function onSubmit(values: z.infer<typeof formSchema>) {
@@ -67,7 +83,7 @@ export function CreateProjectDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="gap-2">
+        <Button className="gap-2" data-testid="button-new-project">
           <Plus className="w-4 h-4" /> New Project
         </Button>
       </DialogTrigger>
@@ -87,7 +103,20 @@ export function CreateProjectDialog() {
                 <FormItem>
                   <FormLabel>Project Name</FormLabel>
                   <FormControl>
-                    <Input placeholder="Project Omega" {...field} />
+                    <Input placeholder="Project Omega" {...field} data-testid="input-project-name" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="clientName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Client Name (Optional)</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Acme Corporation" {...field} data-testid="input-client-name" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -103,17 +132,41 @@ export function CreateProjectDialog() {
                     <Textarea 
                       placeholder="Brief mission parameters..." 
                       className="resize-none" 
-                      {...field} 
+                      {...field}
+                      data-testid="input-project-description"
                     />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            {/* Status could be a select, but defaulting to planning is fine for V1 */}
+            <FormField
+              control={form.control}
+              name="phase"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Phase</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-project-phase">
+                        <SelectValue placeholder="Select project phase" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="discovery">Discovery</SelectItem>
+                      <SelectItem value="design">Design</SelectItem>
+                      <SelectItem value="development">Development</SelectItem>
+                      <SelectItem value="deployment">Deployment</SelectItem>
+                      <SelectItem value="maintenance">Maintenance</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             
             <DialogFooter>
-              <Button type="submit" disabled={mutation.isPending}>
+              <Button type="submit" disabled={mutation.isPending} data-testid="button-submit-project">
                 {mutation.isPending ? "Creating..." : "Create Project"}
               </Button>
             </DialogFooter>

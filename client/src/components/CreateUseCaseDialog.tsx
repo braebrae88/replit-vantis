@@ -2,7 +2,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/mockApi";
+import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -29,13 +29,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 
 const formSchema = z.object({
-  title: z.string().min(3, "Title must be at least 3 characters"),
-  priority: z.enum(["low", "medium", "high"]),
+  name: z.string().min(3, "Title must be at least 3 characters"),
+  problemStatement: z.string().optional(),
+  valueHypothesis: z.string().optional(),
   status: z.enum(["draft", "approved", "implemented"]),
 });
 
@@ -47,8 +49,9 @@ export function CreateUseCaseDialog({ projectId }: { projectId: string }) {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      title: "",
-      priority: "medium",
+      name: "",
+      problemStatement: "",
+      valueHypothesis: "",
       status: "draft",
     },
   });
@@ -67,6 +70,13 @@ export function CreateUseCaseDialog({ projectId }: { projectId: string }) {
         description: "New functional requirement added.",
       });
     },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create use case",
+        variant: "destructive",
+      });
+    },
   });
 
   function onSubmit(values: z.infer<typeof formSchema>) {
@@ -76,11 +86,11 @@ export function CreateUseCaseDialog({ projectId }: { projectId: string }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline" className="gap-2">
+        <Button size="sm" variant="outline" className="gap-2" data-testid="button-add-usecase">
           <Plus className="w-4 h-4" /> Add Use Case
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>New Use Case</DialogTitle>
           <DialogDescription>
@@ -91,67 +101,81 @@ export function CreateUseCaseDialog({ projectId }: { projectId: string }) {
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
               control={form.control}
-              name="title"
+              name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Use Case Title</FormLabel>
+                  <FormLabel>Use Case Name</FormLabel>
                   <FormControl>
-                    <Input placeholder="User Login Flow" {...field} />
+                    <Input placeholder="User Login Flow" {...field} data-testid="input-usecase-name" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
             
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="priority"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Priority</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select priority" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="low">Low</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="high">High</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-               <FormField
-                control={form.control}
-                name="status"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Status</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select status" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="draft">Draft</SelectItem>
-                        <SelectItem value="approved">Approved</SelectItem>
-                        <SelectItem value="implemented">Implemented</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+            <FormField
+              control={form.control}
+              name="problemStatement"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Problem Statement (Optional)</FormLabel>
+                  <FormControl>
+                    <Textarea 
+                      placeholder="What problem does this solve?" 
+                      className="resize-none" 
+                      {...field}
+                      data-testid="input-usecase-problem"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="valueHypothesis"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Value Hypothesis (Optional)</FormLabel>
+                  <FormControl>
+                    <Textarea 
+                      placeholder="What value does this deliver?" 
+                      className="resize-none" 
+                      {...field}
+                      data-testid="input-usecase-value"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="status"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Status</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-usecase-status">
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="draft">Draft</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="implemented">Implemented</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <DialogFooter>
-              <Button type="submit" disabled={mutation.isPending}>
+              <Button type="submit" disabled={mutation.isPending} data-testid="button-submit-usecase">
                 {mutation.isPending ? "Creating..." : "Create Use Case"}
               </Button>
             </DialogFooter>

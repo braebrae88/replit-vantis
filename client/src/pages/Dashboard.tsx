@@ -2,9 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { ArrowRight, Calendar, CheckCircle2, Clock, Folder } from "lucide-react";
 import Layout from "@/components/Layout";
-import { api } from "@/lib/mockApi";
+import { api } from "@/lib/api";
 import { CreateProjectDialog } from "@/components/CreateProjectDialog";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,7 +26,7 @@ export default function Dashboard() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+            <h1 className="text-3xl font-bold tracking-tight" data-testid="heading-dashboard">Dashboard</h1>
             <p className="text-muted-foreground mt-1">
               Overview of all active missions and recent activity.
             </p>
@@ -57,20 +56,27 @@ export default function Dashboard() {
                   </CardContent>
                 </Card>
               ))
-            ) : (
-              projects?.map((project) => (
+            ) : projects && projects.length > 0 ? (
+              projects.map((project) => (
                 <Link key={project.id} href={`/project/${project.id}`}>
-                  <Card className="h-full hover:border-primary/50 transition-colors cursor-pointer group relative overflow-hidden">
+                  <Card 
+                    className="h-full hover:border-primary/50 transition-colors cursor-pointer group relative overflow-hidden"
+                    data-testid={`card-project-${project.id}`}
+                  >
                     <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity">
                       <ArrowRight className="w-5 h-5 text-primary" />
                     </div>
                     <CardHeader>
                       <div className="flex justify-between items-start">
-                        <Badge variant={project.status === "active" ? "default" : "secondary"} className="mb-2 uppercase text-[10px] tracking-wider">
-                          {project.status}
+                        <Badge 
+                          variant="default" 
+                          className="mb-2 uppercase text-[10px] tracking-wider"
+                          data-testid={`badge-status-${project.id}`}
+                        >
+                          {project.phase}
                         </Badge>
                       </div>
-                      <CardTitle className="font-bold text-xl group-hover:text-primary transition-colors">
+                      <CardTitle className="font-bold text-xl group-hover:text-primary transition-colors" data-testid={`text-project-name-${project.id}`}>
                         {project.name}
                       </CardTitle>
                       <CardDescription className="font-mono text-xs text-muted-foreground">
@@ -89,6 +95,10 @@ export default function Dashboard() {
                   </Card>
                 </Link>
               ))
+            ) : (
+              <div className="col-span-full text-center py-12 text-muted-foreground border border-dashed rounded-lg">
+                No projects yet. Create your first project to get started.
+              </div>
             )}
           </div>
         </section>
@@ -107,16 +117,16 @@ export default function Dashboard() {
                      <Skeleton className="h-12 w-full" />
                      <Skeleton className="h-12 w-full" />
                    </div>
-                ) : (
+                ) : events && events.length > 0 ? (
                   <div className="divide-y divide-border">
-                    {events?.slice(0, 5).map((event) => (
-                      <div key={event.id} className="p-4 flex items-center gap-4 hover:bg-muted/50 transition-colors">
+                    {events.slice(0, 5).map((event) => (
+                      <div key={event.id} className="p-4 flex items-center gap-4 hover:bg-muted/50 transition-colors" data-testid={`row-event-${event.id}`}>
                         <div className="w-12 h-12 rounded-lg bg-muted flex flex-col items-center justify-center text-xs font-medium border border-border">
                           <span className="uppercase text-[10px] text-muted-foreground">
-                            {format(new Date(event.date), "MMM")}
+                            {format(new Date(event.occurredAt), "MMM")}
                           </span>
                           <span className="text-lg font-bold">
-                            {format(new Date(event.date), "d")}
+                            {format(new Date(event.occurredAt), "d")}
                           </span>
                         </div>
                         <div className="flex-1">
@@ -138,6 +148,10 @@ export default function Dashboard() {
                       </div>
                     ))}
                   </div>
+                ) : (
+                  <div className="p-6 text-center text-muted-foreground">
+                    No events scheduled.
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -152,13 +166,13 @@ export default function Dashboard() {
                <Card>
                  <CardContent className="p-6">
                    <p className="text-sm text-muted-foreground font-medium">Total Projects</p>
-                   <p className="text-3xl font-bold mt-2">{projects?.length || 0}</p>
+                   <p className="text-3xl font-bold mt-2" data-testid="text-total-projects">{projects?.length || 0}</p>
                  </CardContent>
                </Card>
                <Card>
                  <CardContent className="p-6">
-                   <p className="text-sm text-muted-foreground font-medium">Pending Events</p>
-                   <p className="text-3xl font-bold mt-2">{events?.length || 0}</p>
+                   <p className="text-sm text-muted-foreground font-medium">Upcoming Events</p>
+                   <p className="text-3xl font-bold mt-2" data-testid="text-total-events">{events?.length || 0}</p>
                  </CardContent>
                </Card>
             </div>

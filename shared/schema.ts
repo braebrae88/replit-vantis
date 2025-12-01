@@ -1,18 +1,283 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, varchar } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
+import { sql, relations } from "drizzle-orm";
+import { pgTable, text, varchar, timestamp, integer, pgEnum } from "drizzle-orm/pg-core";
+import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const users = pgTable("users", {
+// Enums
+export const projectPhaseEnum = pgEnum("project_phase", ["discovery", "design", "development", "deployment", "maintenance"]);
+export const useCaseStatusEnum = pgEnum("use_case_status", ["draft", "approved", "implemented"]);
+export const taskStatusEnum = pgEnum("task_status", ["todo", "in-progress", "review", "done"]);
+export const taskPriorityEnum = pgEnum("task_priority", ["low", "medium", "high", "critical"]);
+export const riskCategoryEnum = pgEnum("risk_category", ["technical", "business", "operational", "security", "compliance"]);
+export const riskStatusEnum = pgEnum("risk_status", ["identified", "analyzing", "mitigating", "resolved", "accepted"]);
+export const eventTypeEnum = pgEnum("event_type", ["meeting", "email", "doc", "milestone", "decision"]);
+
+// Projects Table
+export const projects = pgTable("projects", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+  name: text("name").notNull(),
+  clientName: text("client_name"),
+  description: text("description").notNull(),
+  phase: projectPhaseEnum("phase").notNull().default("discovery"),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+// Use Cases Table
+export const useCases = pgTable("use_cases", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  problemStatement: text("problem_statement"),
+  valueHypothesis: text("value_hypothesis"),
+  status: useCaseStatusEnum("status").notNull().default("draft"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
+// Workflow Segments Table
+export const workflowSegments = pgTable("workflow_segments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  useCaseId: varchar("use_case_id").references(() => useCases.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  systemName: text("system_name"),
+  painPoints: text("pain_points"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Readiness Scores Table
+export const readinessScores = pgTable("readiness_scores", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  useCaseId: varchar("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+  dimension: text("dimension").notNull(),
+  score: integer("score").notNull(),
+  rationale: text("rationale"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Risks Table
+export const risks = pgTable("risks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  useCaseId: varchar("use_case_id").references(() => useCases.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  category: riskCategoryEnum("category").notNull(),
+  likelihood: integer("likelihood").notNull(),
+  impact: integer("impact").notNull(),
+  mitigation: text("mitigation"),
+  owner: text("owner"),
+  status: riskStatusEnum("status").notNull().default("identified"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Tasks Table
+export const tasks = pgTable("tasks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  useCaseId: varchar("use_case_id").references(() => useCases.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  owner: text("owner"),
+  dueDate: timestamp("due_date"),
+  status: taskStatusEnum("status").notNull().default("todo"),
+  priority: taskPriorityEnum("priority").notNull().default("medium"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Stakeholders Table
+export const stakeholders = pgTable("stakeholders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  role: text("role"),
+  influence: integer("influence"),
+  supportLevel: integer("support_level"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Events Table
+export const events = pgTable("events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").references(() => projects.id, { onDelete: "cascade" }),
+  type: eventTypeEnum("type").notNull(),
+  sourceSystem: text("source_system"),
+  title: text("title").notNull(),
+  description: text("description"),
+  occurredAt: timestamp("occurred_at").notNull(),
+  metadataJson: text("metadata_json"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Relations
+export const projectsRelations = relations(projects, ({ many }) => ({
+  useCases: many(useCases),
+  workflowSegments: many(workflowSegments),
+  risks: many(risks),
+  tasks: many(tasks),
+  stakeholders: many(stakeholders),
+  events: many(events),
+}));
+
+export const useCasesRelations = relations(useCases, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [useCases.projectId],
+    references: [projects.id],
+  }),
+  workflowSegments: many(workflowSegments),
+  readinessScores: many(readinessScores),
+  risks: many(risks),
+  tasks: many(tasks),
+}));
+
+export const workflowSegmentsRelations = relations(workflowSegments, ({ one }) => ({
+  project: one(projects, {
+    fields: [workflowSegments.projectId],
+    references: [projects.id],
+  }),
+  useCase: one(useCases, {
+    fields: [workflowSegments.useCaseId],
+    references: [useCases.id],
+  }),
+}));
+
+export const readinessScoresRelations = relations(readinessScores, ({ one }) => ({
+  useCase: one(useCases, {
+    fields: [readinessScores.useCaseId],
+    references: [useCases.id],
+  }),
+}));
+
+export const risksRelations = relations(risks, ({ one }) => ({
+  project: one(projects, {
+    fields: [risks.projectId],
+    references: [projects.id],
+  }),
+  useCase: one(useCases, {
+    fields: [risks.useCaseId],
+    references: [useCases.id],
+  }),
+}));
+
+export const tasksRelations = relations(tasks, ({ one }) => ({
+  project: one(projects, {
+    fields: [tasks.projectId],
+    references: [projects.id],
+  }),
+  useCase: one(useCases, {
+    fields: [tasks.useCaseId],
+    references: [useCases.id],
+  }),
+}));
+
+export const stakeholdersRelations = relations(stakeholders, ({ one }) => ({
+  project: one(projects, {
+    fields: [stakeholders.projectId],
+    references: [projects.id],
+  }),
+}));
+
+export const eventsRelations = relations(events, ({ one }) => ({
+  project: one(projects, {
+    fields: [events.projectId],
+    references: [projects.id],
+  }),
+}));
+
+// Zod Schemas for Insert/Select
+export const insertProjectSchema = createInsertSchema(projects).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const selectProjectSchema = createSelectSchema(projects);
+
+export const insertUseCaseSchema = createInsertSchema(useCases).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const selectUseCaseSchema = createSelectSchema(useCases);
+
+export const insertWorkflowSegmentSchema = createInsertSchema(workflowSegments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const selectWorkflowSegmentSchema = createSelectSchema(workflowSegments);
+
+export const insertReadinessScoreSchema = createInsertSchema(readinessScores).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const selectReadinessScoreSchema = createSelectSchema(readinessScores);
+
+export const insertRiskSchema = createInsertSchema(risks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const selectRiskSchema = createSelectSchema(risks);
+
+export const insertTaskSchema = createInsertSchema(tasks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const selectTaskSchema = createSelectSchema(tasks);
+
+export const insertStakeholderSchema = createInsertSchema(stakeholders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const selectStakeholderSchema = createSelectSchema(stakeholders);
+
+export const insertEventSchema = createInsertSchema(events).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const selectEventSchema = createSelectSchema(events);
+
+// TypeScript Types
+export type Project = typeof projects.$inferSelect;
+export type InsertProject = z.infer<typeof insertProjectSchema>;
+
+export type UseCase = typeof useCases.$inferSelect;
+export type InsertUseCase = z.infer<typeof insertUseCaseSchema>;
+
+export type WorkflowSegment = typeof workflowSegments.$inferSelect;
+export type InsertWorkflowSegment = z.infer<typeof insertWorkflowSegmentSchema>;
+
+export type ReadinessScore = typeof readinessScores.$inferSelect;
+export type InsertReadinessScore = z.infer<typeof insertReadinessScoreSchema>;
+
+export type Risk = typeof risks.$inferSelect;
+export type InsertRisk = z.infer<typeof insertRiskSchema>;
+
+export type Task = typeof tasks.$inferSelect;
+export type InsertTask = z.infer<typeof insertTaskSchema>;
+
+export type Stakeholder = typeof stakeholders.$inferSelect;
+export type InsertStakeholder = z.infer<typeof insertStakeholderSchema>;
+
+export type Event = typeof events.$inferSelect;
+export type InsertEvent = z.infer<typeof insertEventSchema>;
