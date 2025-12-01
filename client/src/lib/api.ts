@@ -15,6 +15,7 @@ import type {
   InsertWorkflowSegment,
   ReadinessScore,
   InsertReadinessScore,
+  NextAction,
 } from "@shared/schema";
 
 async function handleResponse<T>(response: Response): Promise<T> {
@@ -34,6 +35,10 @@ export const api = {
     },
     get: async (id: string): Promise<Project> => {
       const response = await fetch(`/api/projects/${id}`);
+      return handleResponse(response);
+    },
+    getNextActions: async (id: string): Promise<NextAction[]> => {
+      const response = await fetch(`/api/projects/${id}/next-actions`);
       return handleResponse(response);
     },
     create: async (data: InsertProject): Promise<Project> => {

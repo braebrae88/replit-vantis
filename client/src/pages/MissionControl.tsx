@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { api } from "@/lib/api";
-import type { Task, UseCase, Risk, Project, Event } from "@shared/schema";
+import type { Task, UseCase, Risk, Project, Event, NextAction } from "@shared/schema";
 import MissionControlLayout from "@/components/MissionControlLayout";
 import { CreateProjectDialog } from "@/components/CreateProjectDialog";
 import { CreateUseCaseDialog } from "@/components/CreateUseCaseDialog";
@@ -38,6 +38,10 @@ import {
   Mail,
   File,
   Video,
+  Lightbulb,
+  ClipboardList,
+  UserCheck,
+  MessageSquare,
 } from "lucide-react";
 
 function formatDate(date: Date | string | null | undefined): string {
@@ -550,6 +554,118 @@ function ActivityTab({ projectId, events }: { projectId: string; events: Event[]
   );
 }
 
+function NextActionsPanel({ projectId }: { projectId: string }) {
+  const { data: actions = [], isLoading } = useQuery({
+    queryKey: ["nextActions", projectId],
+    queryFn: () => api.projects.getNextActions(projectId),
+    staleTime: 30000,
+  });
+
+  if (isLoading) {
+    return (
+      <Card className="mb-6 border-dashed">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <Lightbulb className="w-5 h-5 text-yellow-500" />
+            <CardTitle className="text-base">Next Actions</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-16 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (actions.length === 0) {
+    return (
+      <Card className="mb-6 border-dashed bg-muted/20">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-green-500" />
+            <CardTitle className="text-base">All Caught Up</CardTitle>
+          </div>
+          <CardDescription>No suggested actions at this time. Great work!</CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  const getSeverityStyles = (severity: string) => {
+    switch (severity) {
+      case "critical":
+        return "bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-400";
+      case "high":
+        return "bg-orange-500/10 border-orange-500/30 text-orange-700 dark:text-orange-400";
+      case "medium":
+        return "bg-yellow-500/10 border-yellow-500/30 text-yellow-700 dark:text-yellow-400";
+      default:
+        return "bg-blue-500/10 border-blue-500/30 text-blue-700 dark:text-blue-400";
+    }
+  };
+
+  const getCategoryIcon = (category: string) => {
+    switch (category) {
+      case "readiness":
+        return <Target className="w-4 h-4" />;
+      case "tasks":
+        return <ClipboardList className="w-4 h-4" />;
+      case "engagement":
+        return <MessageSquare className="w-4 h-4" />;
+      case "risks":
+        return <AlertTriangle className="w-4 h-4" />;
+      default:
+        return <Lightbulb className="w-4 h-4" />;
+    }
+  };
+
+  return (
+    <Card className="mb-6" data-testid="panel-next-actions">
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2">
+          <Lightbulb className="w-5 h-5 text-yellow-500" />
+          <CardTitle className="text-base">Next Actions</CardTitle>
+          <Badge variant="secondary" className="ml-auto" data-testid="badge-action-count">
+            {actions.length}
+          </Badge>
+        </div>
+        <CardDescription>Suggested actions based on project status</CardDescription>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="space-y-3">
+          {actions.map((action, index) => (
+            <div
+              key={index}
+              className={cn(
+                "p-3 rounded-lg border flex items-start gap-3",
+                getSeverityStyles(action.severity)
+              )}
+              data-testid={`next-action-${index}`}
+            >
+              <div className="mt-0.5">
+                {getCategoryIcon(action.category)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="font-medium text-sm">{action.title}</span>
+                  <Badge 
+                    variant="outline" 
+                    className={cn("text-xs capitalize", getSeverityStyles(action.severity))}
+                    data-testid={`severity-${action.severity}`}
+                  >
+                    {action.severity}
+                  </Badge>
+                </div>
+                <p className="text-xs opacity-80">{action.description}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function MissionControl() {
   const params = useParams();
   const projectId = params.id;
@@ -621,6 +737,7 @@ export default function MissionControl() {
   return (
     <MissionControlLayout>
       <div className="p-6 max-w-6xl mx-auto">
+        <NextActionsPanel projectId={project.id} />
         <Tabs defaultValue="summary" className="space-y-6">
           <TabsList className="bg-muted/50">
             <TabsTrigger value="summary" data-testid="tab-summary">

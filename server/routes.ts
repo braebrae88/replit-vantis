@@ -95,13 +95,19 @@ export async function registerRoutes(
       const actions: NextAction[] = [];
 
       // Fetch all related data for analysis
-      const [useCases, readinessScores, tasks, risks, events] = await Promise.all([
+      const [useCases, tasks, risks, events] = await Promise.all([
         storage.getUseCases(projectId),
-        storage.getReadinessScores(),
         storage.getTasks(projectId),
         storage.getRisks(projectId),
         storage.getEvents(projectId),
       ]);
+
+      // Get readiness scores only for this project's use cases
+      const useCaseIds = useCases.map(uc => uc.id);
+      const allReadinessScores = await Promise.all(
+        useCaseIds.map(ucId => storage.getReadinessScores(ucId))
+      );
+      const readinessScores = allReadinessScores.flat();
 
       // 1. Check for UseCases without ReadinessScores
       const useCaseIdsWithScores = new Set(readinessScores.map(rs => rs.useCaseId));
@@ -169,8 +175,9 @@ export async function registerRoutes(
       }
 
       // Sort actions by severity (critical > high > medium > low)
-      const severityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
-      actions.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+      const severityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+      const getSeverityOrder = (severity: string): number => severityOrder[severity] ?? 4;
+      actions.sort((a, b) => getSeverityOrder(a.severity) - getSeverityOrder(b.severity));
 
       res.json(actions);
     } catch (error) {
