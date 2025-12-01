@@ -1,7 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { api } from "@/lib/api";
-import type { Task, UseCase, Risk, Project, Event, NextAction } from "@shared/schema";
+import type { Task, UseCase, Risk, Project, Event, NextAction, CompanionResponse, SuggestedTask } from "@shared/schema";
+import { useState } from "react";
 import MissionControlLayout from "@/components/MissionControlLayout";
 import { CreateProjectDialog } from "@/components/CreateProjectDialog";
 import { CreateUseCaseDialog } from "@/components/CreateUseCaseDialog";
@@ -23,6 +24,13 @@ import {
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Building2,
   Calendar,
@@ -42,6 +50,13 @@ import {
   ClipboardList,
   UserCheck,
   MessageSquare,
+  Bot,
+  Send,
+  ChevronDown,
+  ChevronUp,
+  Loader2,
+  CircleDot,
+  ListTodo,
 } from "lucide-react";
 
 function formatDate(date: Date | string | null | undefined): string {
@@ -666,6 +681,215 @@ function NextActionsPanel({ projectId }: { projectId: string }) {
   );
 }
 
+interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+  response?: CompanionResponse;
+}
+
+function VantisCompanionPanel({ projectId }: { projectId: string }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const { toast } = useToast();
+
+  const mutation = useMutation({
+    mutationFn: (message: string) => api.companion.chat(projectId, message),
+    onSuccess: (response) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: response.responseText,
+          response,
+        },
+      ]);
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to get response",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || mutation.isPending) return;
+
+    const userMessage = input.trim();
+    setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+    setInput("");
+    mutation.mutate(userMessage);
+  };
+
+  const getPriorityBadgeColor = (priority: string) => {
+    switch (priority) {
+      case "critical":
+        return "bg-red-500/20 text-red-700 dark:text-red-400";
+      case "high":
+        return "bg-orange-500/20 text-orange-700 dark:text-orange-400";
+      case "medium":
+        return "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400";
+      default:
+        return "bg-blue-500/20 text-blue-700 dark:text-blue-400";
+    }
+  };
+
+  return (
+    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="mb-6">
+      <Card className="border-primary/20" data-testid="panel-vantis-companion">
+        <CollapsibleTrigger asChild>
+          <CardHeader className="pb-3 cursor-pointer hover:bg-muted/50 transition-colors">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Bot className="w-5 h-5 text-primary" />
+                <CardTitle className="text-base">VANTIS Companion</CardTitle>
+                <Badge variant="outline" className="text-xs">AI</Badge>
+              </div>
+              {isOpen ? (
+                <ChevronUp className="w-4 h-4 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+              )}
+            </div>
+            <CardDescription>
+              Ask questions about your project and get AI-powered insights
+            </CardDescription>
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className="pt-0">
+            <div className="border rounded-lg bg-muted/20">
+              <ScrollArea className="h-[300px] p-4">
+                {messages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
+                    <Bot className="w-10 h-10 mb-3 opacity-50" />
+                    <p className="text-sm">Start a conversation with VANTIS Companion</p>
+                    <p className="text-xs mt-1">Ask about project status, risks, or get recommendations</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {messages.map((message, index) => (
+                      <div
+                        key={index}
+                        className={cn(
+                          "flex",
+                          message.role === "user" ? "justify-end" : "justify-start"
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            "max-w-[85%] rounded-lg p-3",
+                            message.role === "user"
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-background border"
+                          )}
+                          data-testid={`chat-message-${index}`}
+                        >
+                          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                          
+                          {message.response && (
+                            <div className="mt-4 space-y-3">
+                              {message.response.assumptions.length > 0 && (
+                                <div>
+                                  <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground mb-1">
+                                    <CircleDot className="w-3 h-3" />
+                                    Assumptions
+                                  </div>
+                                  <ul className="text-xs space-y-1 pl-4">
+                                    {message.response.assumptions.map((a, i) => (
+                                      <li key={i} className="list-disc">{a}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {message.response.gaps.length > 0 && (
+                                <div>
+                                  <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground mb-1">
+                                    <AlertTriangle className="w-3 h-3" />
+                                    Gaps Identified
+                                  </div>
+                                  <ul className="text-xs space-y-1 pl-4">
+                                    {message.response.gaps.map((g, i) => (
+                                      <li key={i} className="list-disc">{g}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {message.response.suggestedTasks.length > 0 && (
+                                <div>
+                                  <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground mb-1">
+                                    <ListTodo className="w-3 h-3" />
+                                    Suggested Tasks
+                                  </div>
+                                  <div className="space-y-2">
+                                    {message.response.suggestedTasks.map((task, i) => (
+                                      <div key={i} className="bg-muted/50 rounded p-2">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-xs font-medium">{task.title}</span>
+                                          <Badge 
+                                            variant="outline" 
+                                            className={cn("text-[10px] capitalize", getPriorityBadgeColor(task.priority))}
+                                          >
+                                            {task.priority}
+                                          </Badge>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground mt-1">{task.description}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {mutation.isPending && (
+                      <div className="flex justify-start">
+                        <div className="bg-background border rounded-lg p-3">
+                          <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </ScrollArea>
+              
+              <form onSubmit={handleSubmit} className="border-t p-3 flex gap-2">
+                <Input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Ask VANTIS Companion..."
+                  disabled={mutation.isPending}
+                  className="flex-1"
+                  data-testid="input-companion-message"
+                />
+                <Button 
+                  type="submit" 
+                  size="icon" 
+                  disabled={mutation.isPending || !input.trim()}
+                  data-testid="button-send-message"
+                >
+                  {mutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                </Button>
+              </form>
+            </div>
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
 export default function MissionControl() {
   const params = useParams();
   const projectId = params.id;
@@ -738,6 +962,7 @@ export default function MissionControl() {
     <MissionControlLayout>
       <div className="p-6 max-w-6xl mx-auto">
         <NextActionsPanel projectId={project.id} />
+        <VantisCompanionPanel projectId={project.id} />
         <Tabs defaultValue="summary" className="space-y-6">
           <TabsList className="bg-muted/50">
             <TabsTrigger value="summary" data-testid="tab-summary">

@@ -16,6 +16,7 @@ import type {
   ReadinessScore,
   InsertReadinessScore,
   NextAction,
+  CompanionResponse,
 } from "@shared/schema";
 
 async function handleResponse<T>(response: Response): Promise<T> {
@@ -365,6 +366,18 @@ export const api = {
       if (!response.ok) {
         throw new Error("Failed to delete readiness score");
       }
+    },
+  },
+
+  // AI Companion
+  companion: {
+    chat: async (projectId: string, message: string): Promise<CompanionResponse> => {
+      const response = await fetch("/api/ai/companion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, message }),
+      });
+      return handleResponse(response);
     },
   },
 };

@@ -13,7 +13,9 @@ import {
   insertFileEventSchema,
   insertEmailEventSchema,
   insertMeetingEventSchema,
+  companionRequestSchema,
   type NextAction,
+  type CompanionResponse,
 } from "@shared/schema";
 import { fromError } from "zod-validation-error";
 
@@ -704,6 +706,63 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Failed to create meeting event:", error);
       res.status(500).json({ error: "Failed to create meeting event" });
+    }
+  });
+
+  // ============= AI COMPANION =============
+
+  app.post("/api/ai/companion", async (req, res) => {
+    try {
+      const result = companionRequestSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ error: fromError(result.error).toString() });
+      }
+
+      const { projectId, message } = result.data;
+
+      // Verify project exists
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // TODO: Replace with actual Google AI Studio integration
+      // For now, return a structured dummy response
+      const response: CompanionResponse = {
+        responseText: `Thank you for your question about "${project.name}". This is a placeholder response from VANTIS Companion. Once integrated with Google AI Studio, I'll provide intelligent analysis and recommendations based on your project data and query: "${message}"`,
+        assumptions: [
+          "The project timeline follows standard enterprise implementation phases",
+          "Key stakeholders have been identified and are available for consultation",
+          "Technical infrastructure requirements are within standard parameters",
+        ],
+        gaps: [
+          "Detailed risk assessment may need additional stakeholder input",
+          "Integration requirements with existing systems need clarification",
+          "Success metrics and KPIs should be defined more specifically",
+        ],
+        suggestedTasks: [
+          {
+            title: "Schedule stakeholder alignment meeting",
+            description: "Organize a meeting with key stakeholders to validate assumptions and address identified gaps",
+            priority: "high",
+          },
+          {
+            title: "Document integration requirements",
+            description: "Create a detailed specification of integration points with existing systems",
+            priority: "medium",
+          },
+          {
+            title: "Define success metrics",
+            description: "Work with business owners to establish measurable KPIs for the project",
+            priority: "medium",
+          },
+        ],
+      };
+
+      res.json(response);
+    } catch (error) {
+      console.error("Failed to process companion request:", error);
+      res.status(500).json({ error: "Failed to process companion request" });
     }
   });
 
