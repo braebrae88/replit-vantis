@@ -1,14 +1,36 @@
 import { db } from "./db";
 import { deliverables, milestones, activities, type InsertDeliverable, type InsertMilestone, type InsertActivity } from "@shared/schema";
 
+export type RASCIEntry = {
+  role: string;
+  responsibility: "R" | "A" | "S" | "C" | "I";
+};
+
+export type WorkshopAgendaItem = {
+  time: string;
+  topic: string;
+};
+
+export type WorkshopTemplate = {
+  key: string;
+  title: string;
+  objective: string;
+  durationMinutes: number;
+  recommendedAttendees: string[];
+  agenda: WorkshopAgendaItem[];
+};
+
 export type DeliverableTemplate = {
   type: "activation_map" | "safe_prototypes" | "ms_funding_nav" | "exec_framing";
   name: string;
   description: string;
+  defaultRASCI?: RASCIEntry[];
+  workshopTemplates?: WorkshopTemplate[];
   milestones: {
     name: string;
     description: string;
     expectedHours?: number;
+    suggestedWorkshopKey?: string;
     activities: {
       name: string;
       description: string;
@@ -23,6 +45,32 @@ export const DELIVERABLE_TEMPLATES: DeliverableTemplate[] = [
     type: "activation_map",
     name: "Activation Map",
     description: "Comprehensive workflow discovery and activation sequencing to identify where AI can be deployed effectively.",
+    defaultRASCI: [
+      { role: "Project Lead", responsibility: "A" },
+      { role: "Solutions Architect", responsibility: "R" },
+      { role: "Business Analyst", responsibility: "R" },
+      { role: "Executive Sponsor", responsibility: "I" },
+      { role: "Process Owner", responsibility: "C" },
+      { role: "IT Lead", responsibility: "S" },
+    ],
+    workshopTemplates: [
+      {
+        key: "readiness_sequencing",
+        title: "Readiness & Sequencing Session",
+        objective: "Align stakeholders on workflow priorities, assess organizational readiness, and establish the optimal activation sequence for AI initiatives.",
+        durationMinutes: 120,
+        recommendedAttendees: ["Project Lead", "Solutions Architect", "Process Owners", "IT Lead", "Business Analyst"],
+        agenda: [
+          { time: "0-15 min", topic: "Welcome & objectives review" },
+          { time: "15-35 min", topic: "Workflow priority ranking exercise" },
+          { time: "35-55 min", topic: "Readiness assessment walkthrough" },
+          { time: "55-60 min", topic: "Break" },
+          { time: "60-85 min", topic: "Dependency mapping discussion" },
+          { time: "85-105 min", topic: "Sequencing logic development" },
+          { time: "105-120 min", topic: "Next steps & action items" },
+        ],
+      },
+    ],
     milestones: [
       {
         name: "Workflow Discovery Completed",
@@ -55,6 +103,7 @@ export const DELIVERABLE_TEMPLATES: DeliverableTemplate[] = [
         name: "Readiness Assessment Completed",
         description: "Evaluate organizational and technical readiness for AI adoption.",
         expectedHours: 6,
+        suggestedWorkshopKey: "readiness_sequencing",
         activities: [
           {
             name: "Readiness Workshop Facilitation",
@@ -177,6 +226,31 @@ export const DELIVERABLE_TEMPLATES: DeliverableTemplate[] = [
     type: "safe_prototypes",
     name: "SAFE Prototypes",
     description: "Rapid prototyping sprints to validate AI feasibility and demonstrate value before full implementation.",
+    defaultRASCI: [
+      { role: "Project Lead", responsibility: "A" },
+      { role: "Solutions Architect", responsibility: "R" },
+      { role: "Data Engineer", responsibility: "R" },
+      { role: "Product Owner", responsibility: "C" },
+      { role: "End Users", responsibility: "C" },
+      { role: "Executive Sponsor", responsibility: "I" },
+    ],
+    workshopTemplates: [
+      {
+        key: "prototype_validation",
+        title: "Prototype Validation Review",
+        objective: "Review prototype outcomes with stakeholders, gather user feedback, and determine go/no-go for production investment.",
+        durationMinutes: 90,
+        recommendedAttendees: ["Project Lead", "Solutions Architect", "Product Owner", "End Users", "Executive Sponsor"],
+        agenda: [
+          { time: "0-10 min", topic: "Welcome & prototype overview" },
+          { time: "10-30 min", topic: "Live demonstration of prototype" },
+          { time: "30-50 min", topic: "User feedback & Q&A session" },
+          { time: "50-65 min", topic: "Technical feasibility discussion" },
+          { time: "65-80 min", topic: "ROI and business case review" },
+          { time: "80-90 min", topic: "Go/No-Go decision & next steps" },
+        ],
+      },
+    ],
     milestones: [
       {
         name: "Prototype Brief",
@@ -282,6 +356,7 @@ export const DELIVERABLE_TEMPLATES: DeliverableTemplate[] = [
         name: "Feasibility Validation",
         description: "Formal assessment of prototype viability for production.",
         expectedHours: 4,
+        suggestedWorkshopKey: "prototype_validation",
         activities: [
           {
             name: "Technical Feasibility Assessment",
@@ -343,6 +418,31 @@ export const DELIVERABLE_TEMPLATES: DeliverableTemplate[] = [
     type: "ms_funding_nav",
     name: "Microsoft Funding Navigator",
     description: "Navigate Microsoft funding programs (Foundry, Frontier, ECIF) to secure co-investment for AI initiatives.",
+    defaultRASCI: [
+      { role: "Project Lead", responsibility: "A" },
+      { role: "Business Development", responsibility: "R" },
+      { role: "Finance Lead", responsibility: "R" },
+      { role: "Microsoft Account Team", responsibility: "C" },
+      { role: "Executive Sponsor", responsibility: "S" },
+      { role: "Legal", responsibility: "C" },
+    ],
+    workshopTemplates: [
+      {
+        key: "funding_strategy",
+        title: "Funding Strategy Workshop",
+        objective: "Develop comprehensive funding strategy across Microsoft programs, align internal stakeholders, and plan Microsoft engagement approach.",
+        durationMinutes: 90,
+        recommendedAttendees: ["Project Lead", "Business Development", "Finance Lead", "Executive Sponsor", "Microsoft Account Team"],
+        agenda: [
+          { time: "0-10 min", topic: "Welcome & funding landscape overview" },
+          { time: "10-25 min", topic: "Foundry program fit assessment" },
+          { time: "25-40 min", topic: "Frontier & ECIF eligibility review" },
+          { time: "40-55 min", topic: "Internal narrative development" },
+          { time: "55-75 min", topic: "Microsoft engagement strategy" },
+          { time: "75-90 min", topic: "Action items & timeline" },
+        ],
+      },
+    ],
     milestones: [
       {
         name: "Foundry Alignment Assessment",
@@ -419,6 +519,7 @@ export const DELIVERABLE_TEMPLATES: DeliverableTemplate[] = [
         name: "Internal Narrative Developed",
         description: "Create compelling internal business case narrative.",
         expectedHours: 4,
+        suggestedWorkshopKey: "funding_strategy",
         activities: [
           {
             name: "Executive Summary Draft",
@@ -486,6 +587,31 @@ export const DELIVERABLE_TEMPLATES: DeliverableTemplate[] = [
     type: "exec_framing",
     name: "Executive Framing",
     description: "Prepare executive-level briefing materials for strategic decision-making and investment approval.",
+    defaultRASCI: [
+      { role: "Project Lead", responsibility: "A" },
+      { role: "Business Analyst", responsibility: "R" },
+      { role: "Communications Lead", responsibility: "R" },
+      { role: "Executive Sponsor", responsibility: "C" },
+      { role: "Finance Lead", responsibility: "S" },
+      { role: "C-Suite Executives", responsibility: "I" },
+    ],
+    workshopTemplates: [
+      {
+        key: "executive_validation",
+        title: "Executive Validation Meeting",
+        objective: "Present strategic initiative to executive leadership, validate business case, address concerns, and obtain investment approval.",
+        durationMinutes: 60,
+        recommendedAttendees: ["Project Lead", "Executive Sponsor", "C-Suite Executives", "Finance Lead"],
+        agenda: [
+          { time: "0-5 min", topic: "Executive sponsor introduction" },
+          { time: "5-15 min", topic: "Strategic context & opportunity" },
+          { time: "15-25 min", topic: "Business case & ROI presentation" },
+          { time: "25-35 min", topic: "Risk assessment & mitigation" },
+          { time: "35-50 min", topic: "Executive Q&A" },
+          { time: "50-60 min", topic: "Decision & next steps" },
+        ],
+      },
+    ],
     milestones: [
       {
         name: "KPI Baseline",
@@ -619,6 +745,7 @@ export const DELIVERABLE_TEMPLATES: DeliverableTemplate[] = [
         name: "Final Review",
         description: "Final review and preparation for executive presentation.",
         expectedHours: 4,
+        suggestedWorkshopKey: "executive_validation",
         activities: [
           {
             name: "Executive Preview",
