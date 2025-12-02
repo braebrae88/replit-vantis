@@ -1,6 +1,20 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
+import { db } from "./db";
+import {
+  projects,
+  useCases,
+  deliverables,
+  milestones,
+  activities,
+  tasks,
+  stakeholders,
+  events,
+  metricSnapshots,
+  opportunitySeeds,
+  engagementInsights,
+} from "@shared/schema";
 import {
   insertProjectSchema,
   insertUseCaseSchema,
@@ -2627,6 +2641,27 @@ Best regards`;
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete activity" });
+    }
+  });
+
+  // TEMP: test data reset endpoint
+  app.delete("/admin/test-data", async (_req, res) => {
+    try {
+      await db.delete(engagementInsights);
+      await db.delete(opportunitySeeds);
+      await db.delete(events);
+      await db.delete(metricSnapshots);
+      await db.delete(stakeholders);
+      await db.delete(tasks);
+      await db.delete(activities);
+      await db.delete(milestones);
+      await db.delete(deliverables);
+      await db.delete(useCases);
+      await db.delete(projects);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to clear test data:", error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : "Unknown error" });
     }
   });
 
