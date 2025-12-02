@@ -42,6 +42,7 @@ The backend is built using **Express.js** with **TypeScript**:
 **AI Integration**:
 - VANTIS Companion: AI assistant for project guidance using OpenAI gpt-4o
 - Event Analysis: AI-powered extraction of insights from meeting/email transcripts
+- Opportunity Suggestions: AI identifies potential new engagements from transcripts, creates PENDING suggestions that require user approval before becoming proposals
 - Centralized system prompts in `server/ai/` directory
 
 **Design Decisions**:
@@ -61,6 +62,7 @@ The backend is built using **Express.js** with **TypeScript**:
   - Readiness Scores for tracking project progress
   - Deliverables with Milestones and Activities for orchestration
   - Engagement Insights and Opportunity Seeds for AI-generated intelligence
+  - Opportunity Suggestions (PENDING/APPROVED/REJECTED) for AI-identified new engagements requiring user approval
   - Extensive use of enums for status fields to ensure data consistency
   
 **Schema Management**:
