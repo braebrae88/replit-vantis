@@ -44,6 +44,17 @@ export const evidenceTagEnum = pgEnum("evidence_tag", ["explicit_language", "exp
 export const riskScoredByEnum = pgEnum("risk_scored_by", ["AI", "USER"]);
 export const riskScoreAuditActionEnum = pgEnum("risk_score_audit_action", ["SUGGEST", "ACCEPT", "EDIT", "REJECT"]);
 
+// Client Report Enums
+export const reportTypeEnum = pgEnum("report_type", ["RISK_REPORT", "STATUS_REPORT", "STEERCO_PACK"]);
+export const generatedByEnum = pgEnum("generated_by", ["AI", "USER"]);
+export const reportSuggestionStatusEnum = pgEnum("report_suggestion_status", ["PENDING", "GENERATED", "DISMISSED"]);
+export const reportSuggestionReasonEnum = pgEnum("report_suggestion_reason", [
+  "HIGH_CRITICAL_RISK",
+  "RISK_ESCALATION", 
+  "UPCOMING_SPONSOR_MEETING",
+  "WEEKLY_CADENCE"
+]);
+
 // Projects Table
 export const projects = pgTable("projects", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -336,6 +347,36 @@ export const riskScoreAudits = pgTable("risk_score_audits", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Client Reports Table
+export const clientReports = pgTable("client_reports", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  type: reportTypeEnum("type").notNull(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  contentMarkdown: text("content_markdown").notNull(),
+  contentHtml: text("content_html"),
+  emailSubject: text("email_subject"),
+  emailSummary: text("email_summary"),
+  generatedBy: generatedByEnum("generated_by").notNull(),
+  approvedAt: timestamp("approved_at"),
+  approvedBy: text("approved_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Report Suggestions Table
+export const reportSuggestions = pgTable("report_suggestions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  reason: reportSuggestionReasonEnum("reason").notNull(),
+  reasonDetails: text("reason_details"),
+  status: reportSuggestionStatusEnum("status").notNull().default("PENDING"),
+  generatedReportId: varchar("generated_report_id").references(() => clientReports.id, { onDelete: "set null" }),
+  suggestedAt: timestamp("suggested_at").notNull().defaultNow(),
+  dismissedAt: timestamp("dismissed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // Relations
 export const projectsRelations = relations(projects, ({ many }) => ({
   useCases: many(useCases),
@@ -560,6 +601,21 @@ export const insertRiskScoreAuditSchema = createInsertSchema(riskScoreAudits).om
 
 export const selectRiskScoreAuditSchema = createSelectSchema(riskScoreAudits);
 
+export const insertClientReportSchema = createInsertSchema(clientReports).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const selectClientReportSchema = createSelectSchema(clientReports);
+
+export const insertReportSuggestionSchema = createInsertSchema(reportSuggestions).omit({
+  id: true,
+  createdAt: true,
+  suggestedAt: true,
+});
+
+export const selectReportSuggestionSchema = createSelectSchema(reportSuggestions);
+
 export const insertTaskSchema = createInsertSchema(tasks).omit({
   id: true,
   createdAt: true,
@@ -761,6 +817,12 @@ export type InsertRisk = z.infer<typeof insertRiskSchema>;
 
 export type RiskScoreAudit = typeof riskScoreAudits.$inferSelect;
 export type InsertRiskScoreAudit = z.infer<typeof insertRiskScoreAuditSchema>;
+
+export type ClientReport = typeof clientReports.$inferSelect;
+export type InsertClientReport = z.infer<typeof insertClientReportSchema>;
+
+export type ReportSuggestion = typeof reportSuggestions.$inferSelect;
+export type InsertReportSuggestion = z.infer<typeof insertReportSuggestionSchema>;
 
 export type Task = typeof tasks.$inferSelect;
 export type InsertTask = z.infer<typeof insertTaskSchema>;
