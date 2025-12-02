@@ -1298,6 +1298,12 @@ function DeliverablesTab({ projectId }: { projectId: string }) {
     enabled: !!selectedDeliverableId,
   });
 
+  const { data: metrics } = useQuery({
+    queryKey: ["deliverable-metrics", selectedDeliverableId],
+    queryFn: () => api.deliverables.getMetrics(selectedDeliverableId!),
+    enabled: !!selectedDeliverableId,
+  });
+
   const { data: milestones = [] } = useQuery({
     queryKey: ["milestones", selectedDeliverableId],
     queryFn: () => api.deliverables.getMilestones(selectedDeliverableId!),
@@ -1501,7 +1507,47 @@ function DeliverablesTab({ projectId }: { projectId: string }) {
       )}
 
       {selectedDeliverable && (
-        <div className="grid gap-6 lg:grid-cols-5 mt-6">
+        <div className="space-y-4 mt-6">
+          {metrics && (
+            <div className="grid gap-4 grid-cols-2 md:grid-cols-5" data-testid="panel-metrics">
+              <Card className="bg-muted/30">
+                <CardContent className="pt-4 pb-3">
+                  <div className="text-2xl font-bold text-primary">{metrics.progress}%</div>
+                  <div className="text-xs text-muted-foreground">Progress</div>
+                </CardContent>
+              </Card>
+              <Card className="bg-muted/30">
+                <CardContent className="pt-4 pb-3">
+                  <div className="text-2xl font-bold font-mono">{metrics.totalHoursEstimate}h</div>
+                  <div className="text-xs text-muted-foreground">Total Hours</div>
+                </CardContent>
+              </Card>
+              <Card className="bg-muted/30">
+                <CardContent className="pt-4 pb-3">
+                  <div className="text-2xl font-bold font-mono">{metrics.hoursRemaining}h</div>
+                  <div className="text-xs text-muted-foreground">Remaining</div>
+                </CardContent>
+              </Card>
+              <Card className={cn("bg-muted/30", metrics.openRiskCount > 0 && "border-yellow-400")}>
+                <CardContent className="pt-4 pb-3">
+                  <div className={cn("text-2xl font-bold", metrics.openRiskCount > 0 ? "text-yellow-600" : "text-green-600")}>
+                    {metrics.openRiskCount}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Open Risks</div>
+                </CardContent>
+              </Card>
+              <Card className={cn("bg-muted/30", metrics.blockedActivityCount > 0 && "border-red-400")}>
+                <CardContent className="pt-4 pb-3">
+                  <div className={cn("text-2xl font-bold", metrics.blockedActivityCount > 0 ? "text-red-600" : "text-green-600")}>
+                    {metrics.blockedActivityCount}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Blocked</div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          <div className="grid gap-6 lg:grid-cols-5">
           <Card className="lg:col-span-2" data-testid="panel-milestones">
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
@@ -1697,6 +1743,7 @@ function DeliverablesTab({ projectId }: { projectId: string }) {
               )}
             </CardContent>
           </Card>
+          </div>
         </div>
       )}
     </div>

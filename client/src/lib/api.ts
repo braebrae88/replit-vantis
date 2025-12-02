@@ -448,6 +448,10 @@ export const api = {
       const response = await fetch(`/api/deliverables/${id}/guidance`);
       return handleResponse(response);
     },
+    getMetrics: async (id: string): Promise<DeliverableMetrics> => {
+      const response = await fetch(`/api/deliverables/${id}/metrics`);
+      return handleResponse(response);
+    },
     getMilestones: async (deliverableId: string): Promise<Milestone[]> => {
       const response = await fetch(`/api/deliverables/${deliverableId}/milestones`);
       return handleResponse(response);
@@ -458,3 +462,14 @@ export const api = {
     },
   },
 };
+
+export interface DeliverableMetrics {
+  progress: number;
+  totalHoursEstimate: number;
+  hoursRemaining: number;
+  openRiskCount: number;
+  blockedActivityCount: number;
+  blockedMilestoneCount: number;
+  totalActivities: number;
+  completedActivities: number;
+}

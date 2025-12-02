@@ -28,6 +28,7 @@ export async function recalculateDeliverableMetrics(deliverableId: string): Prom
   let completedActivities = 0;
   let blockedActivityCount = 0;
   let blockedMilestoneCount = 0;
+  let inProgressActivityCount = 0;
   let totalHoursEstimate = 0;
   let completedHours = 0;
 
@@ -49,6 +50,9 @@ export async function recalculateDeliverableMetrics(deliverableId: string): Prom
       if (activity.status === "blocked") {
         blockedActivityCount++;
       }
+      if (activity.status === "in_progress") {
+        inProgressActivityCount++;
+      }
     }
 
     if (milestoneActivityCount > 0 && milestone.expectedHours) {
@@ -57,7 +61,7 @@ export async function recalculateDeliverableMetrics(deliverableId: string): Prom
     }
   }
 
-  const progress = totalActivities > 0 ? Math.round((completedActivities / totalActivities) * 100) : 0;
+  const progressDecimal = totalActivities > 0 ? (completedActivities / totalActivities) * 100 : 0;
   const hoursRemaining = Math.max(0, totalHoursEstimate - completedHours);
 
   const projectRisks = await storage.getRisks(deliverable.projectId);
@@ -65,18 +69,25 @@ export async function recalculateDeliverableMetrics(deliverableId: string): Prom
     r.status === "identified" || r.status === "analyzing" || r.status === "mitigating"
   ).length;
 
+  const newStatus = determineDeliverableStatus(
+    progressDecimal,
+    blockedActivityCount,
+    blockedMilestoneCount,
+    inProgressActivityCount
+  );
+
   await db.update(deliverables)
     .set({
-      progress,
+      progress: progressDecimal,
       totalHours: totalHoursEstimate,
-      hoursRemaining: Math.round(hoursRemaining * 10) / 10,
-      status: determineDeliverableStatus(progress, blockedActivityCount, blockedMilestoneCount),
+      hoursRemaining: hoursRemaining,
+      status: newStatus,
       updatedAt: new Date(),
     })
     .where(eq(deliverables.id, deliverableId));
 
   return {
-    progress,
+    progress: Math.round(progressDecimal * 10) / 10,
     totalHoursEstimate,
     hoursRemaining: Math.round(hoursRemaining * 10) / 10,
     openRiskCount,
@@ -90,7 +101,8 @@ export async function recalculateDeliverableMetrics(deliverableId: string): Prom
 function determineDeliverableStatus(
   progress: number,
   blockedActivities: number,
-  blockedMilestones: number
+  blockedMilestones: number,
+  inProgressActivities: number
 ): "not_started" | "in_progress" | "blocked" | "done" {
   if (progress >= 100) {
     return "done";
@@ -98,7 +110,7 @@ function determineDeliverableStatus(
   if (blockedActivities > 0 || blockedMilestones > 0) {
     return "blocked";
   }
-  if (progress > 0) {
+  if (progress > 0 || inProgressActivities > 0) {
     return "in_progress";
   }
   return "not_started";
@@ -152,12 +164,13 @@ export async function checkStaleInputsAndCreateRisks(deliverableId: string): Pro
     const milestoneActivities = await storage.getActivities(milestone.id);
 
     for (const activity of milestoneActivities) {
+      const activityUpdateDate = activity.updatedAt || activity.createdAt;
       if (
         activity.requiresInput &&
         activity.requiredInputs.length > 0 &&
-        activity.status !== "done" &&
-        activity.createdAt &&
-        new Date(activity.createdAt) < staleThreshold
+        activity.status === "not_started" &&
+        activityUpdateDate &&
+        new Date(activityUpdateDate) < staleThreshold
       ) {
         const riskTitle = `Missing inputs for "${activity.name}" pending > ${STALE_DAYS_THRESHOLD} days`;
         
