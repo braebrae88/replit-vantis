@@ -75,6 +75,7 @@ import { ACTIVITY_GUIDANCE_SYSTEM_PROMPT, buildActivityGuidanceUserPrompt } from
 import { SOW_BOOTSTRAP_SYSTEM_PROMPT, buildSoWBootstrapPrompt, SoWBootstrapResult } from "./ai/sowBootstrapPrompt";
 import { callLLM, parseJSONResponse } from "./ai/client";
 import { computeNextActions } from "./nextActionsService";
+import { populateArtifactsFromInsights, populateArtifactsFromTasks, populateArtifactsFromRisks } from "./artifactPopulationService";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -1264,12 +1265,21 @@ User Question: ${message}`;
         createdSeeds.push(seed);
       }
 
+      let artifactPopulation = { artifactsUpdated: 0, sectionsUpdated: 0 };
+      try {
+        const insightPopulation = await populateArtifactsFromInsights(eventProjectId, createdInsights);
+        artifactPopulation = insightPopulation;
+      } catch (err) {
+        console.error("Error populating artifacts from event analysis:", err);
+      }
+
       res.json({
         analysis,
         createdInsights: createdInsights.length,
         createdSeeds: createdSeeds.length,
         insights: createdInsights,
         seeds: createdSeeds,
+        artifactPopulation,
       });
     } catch (error) {
       console.error("Failed to analyse event:", error);
@@ -1630,6 +1640,26 @@ Please generate an impact story based on this information.`;
         return (severityOrder[a.severity] || 3) - (severityOrder[b.severity] || 3);
       });
 
+      let artifactPopulation = { artifactsUpdated: 0, sectionsUpdated: 0 };
+      try {
+        const insightPopulation = await populateArtifactsFromInsights(projectId, createdInsights);
+        const taskPopulation = await populateArtifactsFromTasks(
+          projectId, 
+          createdTasks.map(t => ({ title: t.title, description: t.description, dueDate: t.dueDate }))
+        );
+        const riskPopulation = await populateArtifactsFromRisks(
+          projectId, 
+          createdRisks.map(r => ({ title: r.title, category: r.category, mitigation: r.mitigation }))
+        );
+        
+        artifactPopulation = {
+          artifactsUpdated: insightPopulation.artifactsUpdated + taskPopulation.artifactsUpdated + riskPopulation.artifactsUpdated,
+          sectionsUpdated: insightPopulation.sectionsUpdated + taskPopulation.sectionsUpdated + riskPopulation.sectionsUpdated,
+        };
+      } catch (err) {
+        console.error("Error populating artifacts from transcript:", err);
+      }
+
       res.json({
         eventId: createdEvent.id,
         insights: createdInsights,
@@ -1639,6 +1669,7 @@ Please generate an impact story based on this information.`;
         nextActions: allNextActions,
         transcriptSuggestedActions: transcriptNextActions,
         summary: analysis.summary,
+        artifactPopulation,
       });
     } catch (error) {
       console.error("Failed to process transcript intake:", error);
