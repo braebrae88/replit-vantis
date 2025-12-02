@@ -19,6 +19,8 @@ import {
   sowChecklistItems,
   opportunitySuggestions,
   riskScoreAudits,
+  clientReports,
+  reportSuggestions,
   type Project,
   type InsertProject,
   type UseCase,
@@ -61,6 +63,10 @@ import {
   type InsertOpportunitySuggestion,
   type RiskScoreAudit,
   type InsertRiskScoreAudit,
+  type ClientReport,
+  type InsertClientReport,
+  type ReportSuggestion,
+  type InsertReportSuggestion,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql } from "drizzle-orm";
@@ -220,6 +226,30 @@ export interface IStorage {
   createOpportunitySuggestion(suggestion: InsertOpportunitySuggestion): Promise<OpportunitySuggestion>;
   updateOpportunitySuggestion(id: string, suggestion: Partial<InsertOpportunitySuggestion>): Promise<OpportunitySuggestion | undefined>;
   deleteOpportunitySuggestion(id: string): Promise<boolean>;
+
+  // Client Reports
+  getClientReports(projectId: string): Promise<ClientReport[]>;
+  getClientReport(id: string): Promise<ClientReport | undefined>;
+  createClientReport(report: InsertClientReport): Promise<ClientReport>;
+  updateClientReport(id: string, report: Partial<InsertClientReport>): Promise<ClientReport | undefined>;
+  deleteClientReport(id: string): Promise<boolean>;
+
+  // Report Suggestions
+  getReportSuggestions(projectId: string, status?: "PENDING" | "GENERATED" | "DISMISSED"): Promise<ReportSuggestion[]>;
+  getReportSuggestion(id: string): Promise<ReportSuggestion | undefined>;
+  createReportSuggestion(suggestion: InsertReportSuggestion): Promise<ReportSuggestion>;
+  updateReportSuggestion(id: string, suggestion: Partial<InsertReportSuggestion>): Promise<ReportSuggestion | undefined>;
+  deleteReportSuggestion(id: string): Promise<boolean>;
+  getPendingReportSuggestionCount(projectId: string): Promise<number>;
+
+  // Report context data
+  getReportContextData(projectId: string, periodStart: Date, periodEnd: Date): Promise<{
+    project: Project;
+    risks: Risk[];
+    recentEvents: Event[];
+    stakeholders: Stakeholder[];
+    deliverables: Deliverable[];
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -924,6 +954,106 @@ export class DatabaseStorage implements IStorage {
   async deleteOpportunitySuggestion(id: string): Promise<boolean> {
     const result = await db.delete(opportunitySuggestions).where(eq(opportunitySuggestions.id, id));
     return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  // Client Reports
+  async getClientReports(projectId: string): Promise<ClientReport[]> {
+    return await db.select().from(clientReports).where(eq(clientReports.projectId, projectId)).orderBy(sql`${clientReports.createdAt} desc`);
+  }
+
+  async getClientReport(id: string): Promise<ClientReport | undefined> {
+    const [report] = await db.select().from(clientReports).where(eq(clientReports.id, id));
+    return report;
+  }
+
+  async createClientReport(report: InsertClientReport): Promise<ClientReport> {
+    const [newReport] = await db.insert(clientReports).values(report).returning();
+    return newReport;
+  }
+
+  async updateClientReport(id: string, report: Partial<InsertClientReport>): Promise<ClientReport | undefined> {
+    const [updated] = await db
+      .update(clientReports)
+      .set(report)
+      .where(eq(clientReports.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteClientReport(id: string): Promise<boolean> {
+    const result = await db.delete(clientReports).where(eq(clientReports.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  // Report Suggestions
+  async getReportSuggestions(projectId: string, status?: "PENDING" | "GENERATED" | "DISMISSED"): Promise<ReportSuggestion[]> {
+    if (status) {
+      return await db.select().from(reportSuggestions)
+        .where(and(eq(reportSuggestions.projectId, projectId), eq(reportSuggestions.status, status)))
+        .orderBy(sql`${reportSuggestions.suggestedAt} desc`);
+    }
+    return await db.select().from(reportSuggestions).where(eq(reportSuggestions.projectId, projectId)).orderBy(sql`${reportSuggestions.suggestedAt} desc`);
+  }
+
+  async getReportSuggestion(id: string): Promise<ReportSuggestion | undefined> {
+    const [suggestion] = await db.select().from(reportSuggestions).where(eq(reportSuggestions.id, id));
+    return suggestion;
+  }
+
+  async createReportSuggestion(suggestion: InsertReportSuggestion): Promise<ReportSuggestion> {
+    const [newSuggestion] = await db.insert(reportSuggestions).values(suggestion).returning();
+    return newSuggestion;
+  }
+
+  async updateReportSuggestion(id: string, suggestion: Partial<InsertReportSuggestion>): Promise<ReportSuggestion | undefined> {
+    const [updated] = await db
+      .update(reportSuggestions)
+      .set(suggestion)
+      .where(eq(reportSuggestions.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteReportSuggestion(id: string): Promise<boolean> {
+    const result = await db.delete(reportSuggestions).where(eq(reportSuggestions.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  async getPendingReportSuggestionCount(projectId: string): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)::int` }).from(reportSuggestions)
+      .where(and(eq(reportSuggestions.projectId, projectId), eq(reportSuggestions.status, "PENDING")));
+    return result[0]?.count ?? 0;
+  }
+
+  // Report context data
+  async getReportContextData(projectId: string, periodStart: Date, periodEnd: Date): Promise<{
+    project: Project;
+    risks: Risk[];
+    recentEvents: Event[];
+    stakeholders: Stakeholder[];
+    deliverables: Deliverable[];
+  }> {
+    const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
+    if (!project) throw new Error(`Project ${projectId} not found`);
+
+    const projectRisks = await db.select().from(risks).where(eq(risks.projectId, projectId));
+    const projectEvents = await db.select().from(events)
+      .where(and(
+        eq(events.projectId, projectId),
+        sql`${events.occurredAt} >= ${periodStart}`,
+        sql`${events.occurredAt} <= ${periodEnd}`
+      ))
+      .orderBy(sql`${events.occurredAt} desc`);
+    const projectStakeholders = await db.select().from(stakeholders).where(eq(stakeholders.projectId, projectId));
+    const projectDeliverables = await db.select().from(deliverables).where(eq(deliverables.projectId, projectId));
+
+    return {
+      project,
+      risks: projectRisks,
+      recentEvents: projectEvents,
+      stakeholders: projectStakeholders,
+      deliverables: projectDeliverables,
+    };
   }
 }
 
