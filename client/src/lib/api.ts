@@ -20,6 +20,10 @@ import type {
   StatusReport,
   TimesheetResponse,
   RoadmapResponse,
+  Deliverable,
+  Milestone,
+  Activity,
+  GuidanceResponse,
 } from "@shared/schema";
 
 async function handleResponse<T>(response: Response): Promise<T> {
@@ -403,6 +407,53 @@ export const api = {
   roadmap: {
     get: async (projectId: string): Promise<RoadmapResponse> => {
       const response = await fetch(`/api/projects/${projectId}/roadmap`);
+      return handleResponse(response);
+    },
+  },
+
+  deliverables: {
+    list: async (projectId: string): Promise<Deliverable[]> => {
+      const response = await fetch(`/api/deliverables?projectId=${projectId}`);
+      return handleResponse(response);
+    },
+    get: async (id: string): Promise<Deliverable> => {
+      const response = await fetch(`/api/deliverables/${id}`);
+      return handleResponse(response);
+    },
+    create: async (projectId: string, type: string): Promise<Deliverable> => {
+      const response = await fetch(`/api/projects/${projectId}/deliverables`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type }),
+      });
+      return handleResponse(response);
+    },
+    update: async (id: string, data: Partial<Deliverable>): Promise<Deliverable> => {
+      const response = await fetch(`/api/deliverables/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      return handleResponse(response);
+    },
+    delete: async (id: string): Promise<void> => {
+      const response = await fetch(`/api/deliverables/${id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to delete deliverable");
+      }
+    },
+    getGuidance: async (id: string): Promise<GuidanceResponse> => {
+      const response = await fetch(`/api/deliverables/${id}/guidance`);
+      return handleResponse(response);
+    },
+    getMilestones: async (deliverableId: string): Promise<Milestone[]> => {
+      const response = await fetch(`/api/milestones?deliverableId=${deliverableId}`);
+      return handleResponse(response);
+    },
+    getActivities: async (milestoneId: string): Promise<Activity[]> => {
+      const response = await fetch(`/api/activities?milestoneId=${milestoneId}`);
       return handleResponse(response);
     },
   },
