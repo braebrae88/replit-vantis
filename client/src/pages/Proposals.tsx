@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   Dialog,
   DialogContent,
@@ -76,6 +76,7 @@ export default function Proposals() {
   const [showNewDialog, setShowNewDialog] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
 
   const { data: proposals = [], isLoading: loadingProposals } = useQuery({
     queryKey: ["proposals"],
@@ -176,10 +177,7 @@ export default function Proposals() {
       queryClient.invalidateQueries({ queryKey: ["proposals"] });
       queryClient.invalidateQueries({ queryKey: ["proposals", selectedProposalId] });
       queryClient.invalidateQueries({ queryKey: ["projects"] });
-      toast({
-        title: "Project Created!",
-        description: `${result.projectName} created with ${result.deliverablesCreated} deliverables and ${result.nextActionsSeeded} next actions.`,
-      });
+      setLocation(`/projects/${result.projectId}?from=sow`);
     },
     onError: (error) => {
       toast({
@@ -575,7 +573,8 @@ export default function Proposals() {
                       onClick={() => convertToProjectMutation.mutate(selectedProposal.id)}
                       disabled={convertToProjectMutation.isPending}
                       className="w-full bg-emerald-600 hover:bg-emerald-700"
-                      data-testid="button-convert-to-project"
+                      size="lg"
+                      data-testid="button-create-project-from-sow"
                     >
                       {convertToProjectMutation.isPending ? (
                         <>
@@ -585,12 +584,12 @@ export default function Proposals() {
                       ) : (
                         <>
                           <ChevronRight className="h-4 w-4 mr-2" />
-                          Convert to Project
+                          Create Project from SOW
                         </>
                       )}
                     </Button>
                     <p className="text-xs text-slate-500 text-center">
-                      Creates project with Activation Map, SAFE Prototypes, MS Funding Navigation, and Executive Framing deliverables
+                      Creates ready-to-run project with deliverables, kickoff activity, and initial Next Actions
                     </p>
                   </div>
                 )}
