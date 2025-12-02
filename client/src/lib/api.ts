@@ -449,11 +449,11 @@ export const api = {
       return handleResponse(response);
     },
     getMilestones: async (deliverableId: string): Promise<Milestone[]> => {
-      const response = await fetch(`/api/milestones?deliverableId=${deliverableId}`);
+      const response = await fetch(`/api/deliverables/${deliverableId}/milestones`);
       return handleResponse(response);
     },
     getActivities: async (milestoneId: string): Promise<Activity[]> => {
-      const response = await fetch(`/api/activities?milestoneId=${milestoneId}`);
+      const response = await fetch(`/api/milestones/${milestoneId}/activities`);
       return handleResponse(response);
     },
   },

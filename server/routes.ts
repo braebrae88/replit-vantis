@@ -1250,6 +1250,19 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/deliverables", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string | undefined;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId query parameter is required" });
+      }
+      const deliverables = await storage.getDeliverables(projectId);
+      res.json(deliverables);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch deliverables" });
+    }
+  });
+
   app.get("/api/deliverables/:id", async (req, res) => {
     try {
       const deliverable = await storage.getDeliverable(req.params.id);
