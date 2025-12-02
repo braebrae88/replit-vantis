@@ -1404,106 +1404,126 @@ function NextActionsPanel({ projectId }: { projectId: string }) {
     staleTime: 30000,
   });
 
-  if (isLoading) {
-    return (
-      <Card className="mb-6 border-dashed">
-        <CardHeader className="pb-3">
-          <div className="flex items-center gap-2">
-            <Lightbulb className="w-5 h-5 text-yellow-500" />
-            <CardTitle className="text-base">Next Actions</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-16 w-full" />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (actions.length === 0) {
-    return (
-      <Card className="mb-6 border-dashed bg-muted/20">
-        <CardHeader className="pb-3">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5 text-green-500" />
-            <CardTitle className="text-base">All Caught Up</CardTitle>
-          </div>
-          <CardDescription>No suggested actions at this time. Great work!</CardDescription>
-        </CardHeader>
-      </Card>
-    );
-  }
-
-  const getSeverityStyles = (severity: string) => {
-    switch (severity) {
-      case "critical":
-        return "bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-400";
-      case "high":
-        return "bg-orange-500/10 border-orange-500/30 text-orange-700 dark:text-orange-400";
-      case "medium":
-        return "bg-yellow-500/10 border-yellow-500/30 text-yellow-700 dark:text-yellow-400";
-      default:
-        return "bg-blue-500/10 border-blue-500/30 text-blue-700 dark:text-blue-400";
-    }
-  };
-
   const getCategoryIcon = (category: string) => {
     switch (category) {
       case "readiness":
-        return <Target className="w-4 h-4" />;
+        return <Target className="w-4 h-4 text-muted-foreground" />;
       case "tasks":
-        return <ClipboardList className="w-4 h-4" />;
+        return <ClipboardList className="w-4 h-4 text-muted-foreground" />;
       case "engagement":
-        return <MessageSquare className="w-4 h-4" />;
+        return <MessageSquare className="w-4 h-4 text-muted-foreground" />;
       case "risks":
-        return <AlertTriangle className="w-4 h-4" />;
+        return <AlertTriangle className="w-4 h-4 text-muted-foreground" />;
       default:
-        return <Lightbulb className="w-4 h-4" />;
+        return <Lightbulb className="w-4 h-4 text-muted-foreground" />;
+    }
+  };
+
+  const getSeverityBadge = (severity: string) => {
+    switch (severity) {
+      case "critical":
+        return "bg-red-100 text-red-800 border-red-200";
+      case "high":
+        return "bg-orange-100 text-orange-800 border-orange-200";
+      case "medium":
+        return "bg-amber-100 text-amber-800 border-amber-200";
+      default:
+        return "bg-blue-100 text-blue-800 border-blue-200";
+    }
+  };
+
+  const getSuggestedDueDate = (severity: string) => {
+    const today = new Date();
+    switch (severity) {
+      case "critical":
+        return format(new Date(today.getTime() + 1 * 24 * 60 * 60 * 1000), "MMM d");
+      case "high":
+        return format(new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000), "MMM d");
+      case "medium":
+        return format(new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000), "MMM d");
+      default:
+        return format(new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000), "MMM d");
     }
   };
 
   return (
-    <Card className="mb-6" data-testid="panel-next-actions">
-      <CardHeader className="pb-3">
+    <Card className="h-full border-2" data-testid="panel-next-actions">
+      <CardHeader className="pb-3 border-b bg-muted/30">
         <div className="flex items-center gap-2">
-          <Lightbulb className="w-5 h-5 text-yellow-500" />
-          <CardTitle className="text-base">Next Actions</CardTitle>
-          <Badge variant="secondary" className="ml-auto" data-testid="badge-action-count">
-            {actions.length}
-          </Badge>
+          <Lightbulb className="w-5 h-5 text-primary" />
+          <CardTitle className="text-base font-semibold">Next Actions</CardTitle>
+          {actions.length > 0 && (
+            <Badge variant="secondary" className="ml-auto" data-testid="badge-action-count">
+              {actions.length}
+            </Badge>
+          )}
         </div>
-        <CardDescription>Suggested actions based on project status</CardDescription>
+        <CardDescription className="text-xs">Suggested actions based on project status</CardDescription>
       </CardHeader>
-      <CardContent className="pt-0">
-        <div className="space-y-3">
-          {actions.map((action, index) => (
-            <div
-              key={index}
-              className={cn(
-                "p-3 rounded-lg border flex items-start gap-3",
-                getSeverityStyles(action.severity)
-              )}
-              data-testid={`next-action-${index}`}
-            >
-              <div className="mt-0.5">
-                {getCategoryIcon(action.category)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-medium text-sm">{action.title}</span>
-                  <Badge 
-                    variant="outline" 
-                    className={cn("text-xs capitalize", getSeverityStyles(action.severity))}
-                    data-testid={`severity-${action.severity}`}
-                  >
-                    {action.severity}
-                  </Badge>
-                </div>
-                <p className="text-xs opacity-80">{action.description}</p>
-              </div>
+      <CardContent className="pt-4">
+        <ScrollArea className="h-[calc(100vh-280px)]">
+          {isLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-24 w-full" />
             </div>
-          ))}
-        </div>
+          ) : actions.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <CheckCircle2 className="w-10 h-10 text-green-500 mb-3" />
+              <p className="font-medium text-sm">All Caught Up</p>
+              <p className="text-xs text-muted-foreground mt-1">No suggested actions at this time.</p>
+            </div>
+          ) : (
+            <div className="space-y-3 pr-2">
+              {actions.map((action, index) => (
+                <Card
+                  key={index}
+                  className="bg-card border shadow-sm"
+                  data-testid={`next-action-${index}`}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 p-1.5 rounded-md bg-muted">
+                        {getCategoryIcon(action.category)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <h4 className="font-medium text-sm text-foreground leading-tight">
+                            {action.title}
+                          </h4>
+                          <Badge 
+                            variant="outline" 
+                            className={cn("text-xs capitalize shrink-0", getSeverityBadge(action.severity))}
+                            data-testid={`severity-${action.severity}`}
+                          >
+                            {action.severity}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
+                          {action.description}
+                        </p>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <Calendar className="w-3 h-3" />
+                            <span>Due: {getSuggestedDueDate(action.severity)}</span>
+                          </div>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-7 text-xs px-2"
+                            data-testid={`button-action-details-${index}`}
+                          >
+                            Go to details
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </ScrollArea>
       </CardContent>
     </Card>
   );
@@ -1604,7 +1624,6 @@ interface VantisCompanionPanelProps {
 }
 
 function VantisCompanionPanel({ projectId, selectedDeliverableId }: VantisCompanionPanelProps) {
-  const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const { toast } = useToast();
@@ -1641,102 +1660,89 @@ function VantisCompanionPanel({ projectId, selectedDeliverableId }: VantisCompan
   };
 
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="mb-6">
-      <Card className="border-primary/20" data-testid="panel-vantis-companion">
-        <CollapsibleTrigger asChild>
-          <CardHeader className="pb-3 cursor-pointer hover:bg-muted/50 transition-colors">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Bot className="w-5 h-5 text-primary" />
-                <CardTitle className="text-base">VANTIS Companion</CardTitle>
-                <Badge variant="outline" className="text-xs">AI</Badge>
+    <Card className="h-full border-2 border-primary/20 flex flex-col" data-testid="panel-vantis-companion">
+      <CardHeader className="pb-3 border-b bg-primary/5 shrink-0">
+        <div className="flex items-center gap-2">
+          <Bot className="w-5 h-5 text-primary" />
+          <CardTitle className="text-base font-semibold">VANTIS Companion</CardTitle>
+          <Badge variant="outline" className="text-xs border-primary/30 text-primary">AI</Badge>
+        </div>
+        <CardDescription className="text-xs">
+          Ask questions about your project and get AI-powered insights
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex-1 flex flex-col p-0 min-h-0">
+        <ScrollArea className="flex-1 p-4">
+          <div className="h-[calc(100vh-340px)]">
+            {messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
+                <Bot className="w-12 h-12 mb-3 opacity-30" />
+                <p className="text-sm font-medium">Start a conversation</p>
+                <p className="text-xs mt-1 max-w-[200px]">Ask about project status, risks, or get recommendations</p>
               </div>
-              {isOpen ? (
-                <ChevronUp className="w-4 h-4 text-muted-foreground" />
-              ) : (
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-              )}
-            </div>
-            <CardDescription>
-              Ask questions about your project and get AI-powered insights
-            </CardDescription>
-          </CardHeader>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <CardContent className="pt-0">
-            <div className="border rounded-lg bg-muted/20">
-              <ScrollArea className="h-[300px] p-4">
-                {messages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
-                    <Bot className="w-10 h-10 mb-3 opacity-50" />
-                    <p className="text-sm">Start a conversation with VANTIS Companion</p>
-                    <p className="text-xs mt-1">Ask about project status, risks, or get recommendations</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {messages.map((message, index) => (
-                      <div
-                        key={index}
-                        className={cn(
-                          "flex",
-                          message.role === "user" ? "justify-end" : "justify-start"
-                        )}
-                      >
-                        <div
-                          className={cn(
-                            "max-w-[85%] rounded-lg p-3",
-                            message.role === "user"
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-background border"
-                          )}
-                          data-testid={`chat-message-${index}`}
-                        >
-                          {message.role === "user" ? (
-                            <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                          ) : (
-                            <MarkdownContent content={message.content} />
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    {mutation.isPending && (
-                      <div className="flex justify-start">
-                        <div className="bg-background border rounded-lg p-3">
-                          <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                        </div>
-                      </div>
+            ) : (
+              <div className="space-y-4">
+                {messages.map((message, index) => (
+                  <div
+                    key={index}
+                    className={cn(
+                      "flex",
+                      message.role === "user" ? "justify-end" : "justify-start"
                     )}
+                  >
+                    <div
+                      className={cn(
+                        "max-w-[90%] rounded-lg p-3",
+                        message.role === "user"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted border"
+                      )}
+                      data-testid={`chat-message-${index}`}
+                    >
+                      {message.role === "user" ? (
+                        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                      ) : (
+                        <MarkdownContent content={message.content} />
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {mutation.isPending && (
+                  <div className="flex justify-start">
+                    <div className="bg-muted border rounded-lg p-3">
+                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                    </div>
                   </div>
                 )}
-              </ScrollArea>
-              
-              <form onSubmit={handleSubmit} className="border-t p-3 flex gap-2">
-                <Input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Ask VANTIS Companion..."
-                  disabled={mutation.isPending}
-                  className="flex-1"
-                  data-testid="input-companion-message"
-                />
-                <Button 
-                  type="submit" 
-                  size="icon" 
-                  disabled={mutation.isPending || !input.trim()}
-                  data-testid="button-send-message"
-                >
-                  {mutation.isPending ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Send className="w-4 h-4" />
-                  )}
-                </Button>
-              </form>
-            </div>
-          </CardContent>
-        </CollapsibleContent>
-      </Card>
-    </Collapsible>
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+        
+        <form onSubmit={handleSubmit} className="border-t p-3 flex gap-2 shrink-0 bg-background">
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask VANTIS..."
+            disabled={mutation.isPending}
+            className="flex-1 text-sm"
+            data-testid="input-companion-message"
+          />
+          <Button 
+            type="submit" 
+            size="icon" 
+            disabled={mutation.isPending || !input.trim()}
+            data-testid="button-send-message"
+          >
+            {mutation.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Send className="w-4 h-4" />
+            )}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -3343,112 +3349,84 @@ export default function MissionControl() {
 
   return (
     <MissionControlLayout>
-      <div className="p-6 max-w-6xl mx-auto">
-        <NextActionsPanel projectId={project.id} />
-        <VantisCompanionPanel projectId={project.id} selectedDeliverableId={selectedDeliverableId || undefined} />
-        <Tabs defaultValue="summary" className="space-y-6">
-          <TabsList className="bg-muted/50">
-            <TabsTrigger value="summary" data-testid="tab-summary">
-              <FileText className="w-4 h-4 mr-2" />
-              Summary
-            </TabsTrigger>
-            <TabsTrigger value="use-cases" data-testid="tab-usecases">
-              <Briefcase className="w-4 h-4 mr-2" />
-              Use Cases
-            </TabsTrigger>
-            <TabsTrigger value="tasks" data-testid="tab-tasks">
-              <CheckCircle2 className="w-4 h-4 mr-2" />
-              Tasks
-            </TabsTrigger>
-            <TabsTrigger value="risks" data-testid="tab-risks">
-              <AlertTriangle className="w-4 h-4 mr-2" />
-              Risks
-            </TabsTrigger>
-            <TabsTrigger value="activity" data-testid="tab-activity">
-              <Activity className="w-4 h-4 mr-2" />
-              Activity
-            </TabsTrigger>
-            <TabsTrigger value="status-report" data-testid="tab-status-report">
-              <FileBarChart className="w-4 h-4 mr-2" />
-              Status Report
-            </TabsTrigger>
-            <TabsTrigger value="roadmap" data-testid="tab-roadmap">
-              <Map className="w-4 h-4 mr-2" />
-              Roadmap
-            </TabsTrigger>
-            <TabsTrigger value="deliverables" data-testid="tab-deliverables">
-              <Briefcase className="w-4 h-4 mr-2" />
-              Deliverables
-            </TabsTrigger>
-            <TabsTrigger value="stakeholders" data-testid="tab-stakeholders">
-              <Users className="w-4 h-4 mr-2" />
-              Stakeholders
-            </TabsTrigger>
-            <TabsTrigger value="insights" data-testid="tab-insights">
-              <Lightbulb className="w-4 h-4 mr-2" />
-              Insights
-            </TabsTrigger>
-            <TabsTrigger value="value-impact" data-testid="tab-value-impact">
-              <BarChart3 className="w-4 h-4 mr-2" />
-              Value & Impact
-            </TabsTrigger>
-            <TabsTrigger value="account-growth" data-testid="tab-account-growth">
-              <TrendingUp className="w-4 h-4 mr-2" />
-              Account Growth
-            </TabsTrigger>
-          </TabsList>
+      <div className="h-[calc(100vh-3.5rem)] flex flex-col">
+        <Tabs defaultValue="summary" className="flex-1 flex flex-col min-h-0">
+          <div className="border-b bg-card px-4 shrink-0">
+            <TabsList className="bg-transparent h-12 gap-1">
+              <TabsTrigger value="summary" className="data-[state=active]:bg-background" data-testid="tab-summary">
+                Summary
+              </TabsTrigger>
+              <TabsTrigger value="use-cases" className="data-[state=active]:bg-background" data-testid="tab-usecases">
+                Use Cases
+              </TabsTrigger>
+              <TabsTrigger value="tasks" className="data-[state=active]:bg-background" data-testid="tab-tasks">
+                Tasks
+              </TabsTrigger>
+              <TabsTrigger value="risks" className="data-[state=active]:bg-background" data-testid="tab-risks">
+                Risks
+              </TabsTrigger>
+              <TabsTrigger value="activity" className="data-[state=active]:bg-background" data-testid="tab-activity">
+                Activity
+              </TabsTrigger>
+              <TabsTrigger value="deliverables" className="data-[state=active]:bg-background" data-testid="tab-deliverables">
+                Deliverables
+              </TabsTrigger>
+              <TabsTrigger value="value-impact" className="data-[state=active]:bg-background" data-testid="tab-value-impact">
+                Value & Impact
+              </TabsTrigger>
+              <TabsTrigger value="account-growth" className="data-[state=active]:bg-background" data-testid="tab-account-growth">
+                Account Growth
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
-          <TabsContent value="summary">
-            <SummaryTab project={project} />
-          </TabsContent>
+          <div className="flex-1 grid grid-cols-[280px_1fr_300px] gap-4 p-4 min-h-0 overflow-hidden">
+            <div className="min-h-0">
+              <NextActionsPanel projectId={project.id} />
+            </div>
 
-          <TabsContent value="use-cases">
-            <UseCasesTab projectId={project.id} useCases={useCases} />
-          </TabsContent>
+            <div className="min-h-0 overflow-auto">
+              <TabsContent value="summary" className="mt-0 h-full">
+                <SummaryTab project={project} />
+              </TabsContent>
 
-          <TabsContent value="tasks">
-            <TasksTab projectId={project.id} tasks={tasks} />
-          </TabsContent>
+              <TabsContent value="use-cases" className="mt-0 h-full">
+                <UseCasesTab projectId={project.id} useCases={useCases} />
+              </TabsContent>
 
-          <TabsContent value="risks">
-            <RisksTab projectId={project.id} risks={risks} />
-          </TabsContent>
+              <TabsContent value="tasks" className="mt-0 h-full">
+                <TasksTab projectId={project.id} tasks={tasks} />
+              </TabsContent>
 
-          <TabsContent value="activity">
-            <ActivityTab projectId={project.id} events={events} />
-          </TabsContent>
+              <TabsContent value="risks" className="mt-0 h-full">
+                <RisksTab projectId={project.id} risks={risks} />
+              </TabsContent>
 
-          <TabsContent value="status-report">
-            <StatusReportTab projectId={project.id} />
-          </TabsContent>
+              <TabsContent value="activity" className="mt-0 h-full">
+                <ActivityTab projectId={project.id} events={events} />
+              </TabsContent>
 
-          <TabsContent value="roadmap">
-            <RoadmapTab projectId={project.id} />
-          </TabsContent>
+              <TabsContent value="deliverables" className="mt-0 h-full">
+                <DeliverablesTab 
+                  projectId={project.id} 
+                  selectedDeliverableId={selectedDeliverableId}
+                  onDeliverableSelect={setSelectedDeliverableId}
+                />
+              </TabsContent>
 
-          <TabsContent value="deliverables">
-            <DeliverablesTab 
-              projectId={project.id} 
-              selectedDeliverableId={selectedDeliverableId}
-              onDeliverableSelect={setSelectedDeliverableId}
-            />
-          </TabsContent>
+              <TabsContent value="value-impact" className="mt-0 h-full">
+                <ValueImpactTab projectId={project.id} />
+              </TabsContent>
 
-          <TabsContent value="stakeholders">
-            <StakeholdersTab projectId={project.id} />
-          </TabsContent>
+              <TabsContent value="account-growth" className="mt-0 h-full">
+                <AccountGrowthTab projectId={project.id} />
+              </TabsContent>
+            </div>
 
-          <TabsContent value="insights">
-            <InsightsTab projectId={project.id} />
-          </TabsContent>
-
-          <TabsContent value="value-impact">
-            <ValueImpactTab projectId={project.id} />
-          </TabsContent>
-
-          <TabsContent value="account-growth">
-            <AccountGrowthTab projectId={project.id} />
-          </TabsContent>
+            <div className="min-h-0">
+              <VantisCompanionPanel projectId={project.id} selectedDeliverableId={selectedDeliverableId || undefined} />
+            </div>
+          </div>
         </Tabs>
       </div>
     </MissionControlLayout>
