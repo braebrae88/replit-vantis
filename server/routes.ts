@@ -9,6 +9,7 @@ import {
   milestones,
   activities,
   tasks,
+  risks,
   stakeholders,
   events,
   metricSnapshots,
@@ -68,7 +69,9 @@ import { EVENT_ANALYSIS_SYSTEM_PROMPT, EventAnalysisResult } from "./ai/eventAna
 import { STAKEHOLDER_ANALYSIS_SYSTEM_PROMPT, StakeholderAnalysisResult } from "./ai/stakeholderPrompt";
 import { IMPACT_STORY_SYSTEM_PROMPT, ImpactStoryResult } from "./ai/impactStoryPrompt";
 import { ACCOUNT_GROWTH_SYSTEM_PROMPT, AccountGrowthResult, RuleBasedSuggestion, EngagementIdea } from "./ai/accountGrowthPrompt";
+import { TRANSCRIPT_INTAKE_SYSTEM_PROMPT, buildTranscriptIntakePrompt, TranscriptAnalysisResult } from "./ai/transcriptIntakePrompt";
 import { callLLM, parseJSONResponse } from "./ai/client";
+import { computeNextActions } from "./nextActionsService";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -145,93 +148,7 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Project not found" });
       }
 
-      const actions: NextAction[] = [];
-
-      // Fetch all related data for analysis
-      const [useCases, tasks, risks, events] = await Promise.all([
-        storage.getUseCases(projectId),
-        storage.getTasks(projectId),
-        storage.getRisks(projectId),
-        storage.getEvents(projectId),
-      ]);
-
-      // Get readiness scores only for this project's use cases
-      const useCaseIds = useCases.map(uc => uc.id);
-      const allReadinessScores = await Promise.all(
-        useCaseIds.map(ucId => storage.getReadinessScores(ucId))
-      );
-      const readinessScores = allReadinessScores.flat();
-
-      // 1. Check for UseCases without ReadinessScores
-      const useCaseIdsWithScores = new Set(readinessScores.map(rs => rs.useCaseId));
-      const useCasesWithoutScores = useCases.filter(uc => !useCaseIdsWithScores.has(uc.id));
-      
-      for (const useCase of useCasesWithoutScores) {
-        actions.push({
-          title: `Run readiness assessment for "${useCase.name}"`,
-          description: `Use case "${useCase.name}" has no readiness scores. Complete an assessment to track progress.`,
-          severity: "medium",
-          category: "readiness",
-        });
-      }
-
-      // 2. Check for overdue tasks
-      const now = new Date();
-      const overdueTasks = tasks.filter(task => {
-        if (task.status === "done") return false;
-        if (!task.dueDate) return false;
-        return new Date(task.dueDate) < now;
-      });
-
-      if (overdueTasks.length > 0) {
-        const taskNames = overdueTasks.slice(0, 3).map(t => t.title).join(", ");
-        const moreCount = overdueTasks.length > 3 ? ` and ${overdueTasks.length - 3} more` : "";
-        actions.push({
-          title: "Follow up on overdue tasks",
-          description: `${overdueTasks.length} task(s) are past due: ${taskNames}${moreCount}. Review and update their status.`,
-          severity: overdueTasks.length >= 5 ? "critical" : overdueTasks.length >= 3 ? "high" : "medium",
-          category: "tasks",
-        });
-      }
-
-      // 3. Check for no recent events (engagement gap)
-      const fourteenDaysAgo = new Date();
-      fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-      
-      const recentEvents = events.filter(e => new Date(e.occurredAt) >= fourteenDaysAgo);
-      
-      if (recentEvents.length === 0) {
-        actions.push({
-          title: "Schedule a client checkpoint meeting",
-          description: "No activity has been logged for this project in the last 14 days. Consider scheduling a sync with stakeholders.",
-          severity: "high",
-          category: "engagement",
-        });
-      }
-
-      // 4. Check for open risks without owners
-      const openRisksWithoutOwners = risks.filter(risk => {
-        const isOpen = risk.status === "identified" || risk.status === "analyzing";
-        const hasNoOwner = !risk.owner || risk.owner.trim() === "";
-        return isOpen && hasNoOwner;
-      });
-
-      if (openRisksWithoutOwners.length > 0) {
-        const riskTitles = openRisksWithoutOwners.slice(0, 3).map(r => r.title).join(", ");
-        const moreCount = openRisksWithoutOwners.length > 3 ? ` and ${openRisksWithoutOwners.length - 3} more` : "";
-        actions.push({
-          title: "Assign owners to risks",
-          description: `${openRisksWithoutOwners.length} open risk(s) have no assigned owner: ${riskTitles}${moreCount}.`,
-          severity: openRisksWithoutOwners.length >= 3 ? "high" : "medium",
-          category: "risks",
-        });
-      }
-
-      // Sort actions by severity (critical > high > medium > low)
-      const severityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
-      const getSeverityOrder = (severity: string): number => severityOrder[severity] ?? 4;
-      actions.sort((a, b) => getSeverityOrder(a.severity) - getSeverityOrder(b.severity));
-
+      const actions = await computeNextActions(projectId);
       res.json(actions);
     } catch (error) {
       console.error("Failed to compute next actions:", error);
@@ -1387,6 +1304,215 @@ Please generate an impact story based on this information.`;
     } catch (error) {
       console.error("Failed to generate impact story:", error);
       res.status(500).json({ error: "Failed to generate impact story" });
+    }
+  });
+
+  // ============= TRANSCRIPT INTAKE =============
+
+  const transcriptIntakeSchema = z.object({
+    rawTranscript: z.string().min(10, "Transcript must be at least 10 characters"),
+    eventType: z.enum(["meeting", "workshop", "call"]),
+    phase: z.enum(["DISCOVER", "MAP", "PROTOTYPE", "UNLOCK"]),
+  });
+
+  app.post("/api/ai/projects/:projectId/transcript-intake", async (req, res) => {
+    try {
+      const projectId = req.params.projectId;
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const parseResult = transcriptIntakeSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ error: fromError(parseResult.error).toString() });
+      }
+
+      const { rawTranscript, eventType, phase } = parseResult.data;
+
+      const eventDate = new Date();
+      const eventTitle = `Transcript Intake – ${eventDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+      const snippetLength = 200;
+      const snippet = rawTranscript.length > snippetLength 
+        ? rawTranscript.substring(0, snippetLength) + "..." 
+        : rawTranscript;
+
+      const createdEvent = await storage.createEvent({
+        projectId,
+        type: "meeting",
+        title: eventTitle,
+        description: snippet,
+        occurredAt: eventDate,
+        sourceSystem: "transcript-intake",
+        metadataJson: JSON.stringify({ eventType, phase, transcriptLength: rawTranscript.length }),
+      });
+
+      const projectContext = `Project: ${project.name}\nClient: ${project.clientName || 'N/A'}\nDescription: ${project.description}`;
+      const userPrompt = buildTranscriptIntakePrompt(rawTranscript, eventType, phase, projectContext);
+
+      const llmResult = await callLLM({
+        systemPrompt: TRANSCRIPT_INTAKE_SYSTEM_PROMPT,
+        userContent: userPrompt,
+        temperature: 0.3,
+        maxTokens: 2000,
+        jsonMode: true,
+      });
+
+      if (!llmResult.success) {
+        return res.status(500).json({ error: llmResult.error });
+      }
+
+      const jsonResult = parseJSONResponse<TranscriptAnalysisResult>(llmResult.content);
+      if (!jsonResult.success || !jsonResult.data) {
+        return res.status(500).json({ error: jsonResult.error });
+      }
+
+      const analysis = jsonResult.data;
+      const createdInsights: typeof engagementInsights.$inferSelect[] = [];
+      const createdTasks: typeof tasks.$inferSelect[] = [];
+      const createdRisks: typeof risks.$inferSelect[] = [];
+      const updatedStakeholders: typeof stakeholders.$inferSelect[] = [];
+
+      const insightsToCreate: Parameters<typeof storage.createManyEngagementInsights>[0] = [];
+
+      if (analysis.summary) {
+        insightsToCreate.push({
+          projectId,
+          eventId: createdEvent.id,
+          type: "meeting_summary",
+          title: eventTitle,
+          summary: analysis.summary,
+          importance: "medium",
+          tags: [eventType, phase.toLowerCase()],
+          createdByAI: true,
+        });
+      }
+
+      for (const decision of analysis.decisions || []) {
+        insightsToCreate.push({
+          projectId,
+          eventId: createdEvent.id,
+          type: "decision",
+          title: decision.description.substring(0, 100),
+          summary: `${decision.description}${decision.madeBy ? ` (Decision by: ${decision.madeBy})` : ''}`,
+          importance: "high",
+          tags: ["decision", eventType],
+          createdByAI: true,
+        });
+      }
+
+      for (const question of analysis.openQuestions || []) {
+        insightsToCreate.push({
+          projectId,
+          eventId: createdEvent.id,
+          type: "open_question",
+          title: question.question.substring(0, 100),
+          summary: question.context ? `${question.question}\n\nContext: ${question.context}` : question.question,
+          importance: "medium",
+          tags: ["open-question", eventType],
+          createdByAI: true,
+        });
+      }
+
+      if (insightsToCreate.length > 0) {
+        const created = await storage.createManyEngagementInsights(insightsToCreate);
+        createdInsights.push(...created);
+      }
+
+      for (const action of analysis.actions || []) {
+        const task = await storage.createTask({
+          projectId,
+          title: action.title,
+          description: action.description,
+          owner: action.owner || undefined,
+          dueDate: action.dueDate ? new Date(action.dueDate) : undefined,
+          status: "todo",
+          priority: "medium",
+        });
+        createdTasks.push(task);
+      }
+
+      for (const riskItem of analysis.risks || []) {
+        const risk = await storage.createRisk({
+          projectId,
+          title: riskItem.title,
+          category: riskItem.category,
+          likelihood: 3,
+          impact: 3,
+          mitigation: riskItem.description,
+          status: "identified",
+        });
+        createdRisks.push(risk);
+      }
+
+      for (const stakeholderMention of analysis.stakeholders || []) {
+        const existingStakeholder = await storage.findStakeholderByName(projectId, stakeholderMention.name);
+        
+        if (existingStakeholder) {
+          const supportMap: Record<string, "opposed" | "neutral" | "supportive" | "champion"> = {
+            positive: "supportive",
+            neutral: "neutral",
+            negative: "opposed",
+          };
+          
+          const updates: Partial<typeof existingStakeholder> = {
+            lastContactAt: new Date(),
+          };
+          
+          if (stakeholderMention.role && !existingStakeholder.role) {
+            updates.role = stakeholderMention.role;
+          }
+          
+          if (stakeholderMention.sentiment) {
+            updates.supportLevel = supportMap[stakeholderMention.sentiment] || "neutral";
+          }
+          
+          const updated = await storage.updateStakeholder(existingStakeholder.id, updates);
+          if (updated) updatedStakeholders.push(updated);
+        } else {
+          const supportMap: Record<string, "opposed" | "neutral" | "supportive" | "champion"> = {
+            positive: "supportive",
+            neutral: "neutral",
+            negative: "opposed",
+          };
+          
+          const newStakeholder = await storage.createStakeholder({
+            projectId,
+            name: stakeholderMention.name,
+            role: stakeholderMention.role || undefined,
+            supportLevel: stakeholderMention.sentiment ? supportMap[stakeholderMention.sentiment] : "neutral",
+            lastContactAt: new Date(),
+            notes: `First mentioned in transcript intake on ${eventDate.toLocaleDateString()}`,
+          });
+          updatedStakeholders.push(newStakeholder);
+        }
+      }
+
+      const transcriptNextActions = analysis.nextActions || [];
+
+      const recomputedNextActions = await computeNextActions(projectId);
+
+      const allNextActions = [
+        ...transcriptNextActions,
+        ...recomputedNextActions,
+      ].sort((a, b) => {
+        const severityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+        return (severityOrder[a.severity] || 3) - (severityOrder[b.severity] || 3);
+      });
+
+      res.json({
+        eventId: createdEvent.id,
+        insights: createdInsights,
+        tasks: createdTasks,
+        risks: createdRisks,
+        stakeholders: updatedStakeholders,
+        nextActions: allNextActions,
+        transcriptSuggestedActions: transcriptNextActions,
+        summary: analysis.summary,
+      });
+    } catch (error) {
+      console.error("Failed to process transcript intake:", error);
+      res.status(500).json({ error: "Failed to process transcript" });
     }
   });
 
