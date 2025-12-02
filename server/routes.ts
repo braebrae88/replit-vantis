@@ -44,6 +44,7 @@ import {
   recalculateDeliverableMetrics,
 } from "./deliverableMetrics";
 import { getDeliverableGuidance } from "./guidanceService";
+import { VANTIS_SYSTEM_PROMPT } from "./ai/systemPrompt";
 import OpenAI from "openai";
 
 export async function registerRoutes(
@@ -743,28 +744,6 @@ export async function registerRoutes(
     apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
   });
 
-  const COMPANION_SYSTEM_PROMPT = `You are VANTIS Companion, an intelligent assistant for enterprise project managers working on VANTIS Activation Graph initiatives. You help users navigate complex consulting deliverables, understand project state, and make progress on their work.
-
-Your expertise includes:
-- Forge Vantis methodology for AI activation consulting
-- Microsoft partner programs (Foundry, Frontier, ECIF)
-- Enterprise change management and stakeholder alignment
-- Workshop facilitation and meeting planning
-- Risk assessment and mitigation strategies
-
-When responding:
-1. Be concise but thorough - use bullet points and clear headings
-2. Reference specific project data when available
-3. Provide actionable recommendations
-4. Highlight risks and blockers proactively
-5. Suggest workshops or meetings when stakeholder alignment is needed
-
-Format your responses using markdown with:
-- **Bold** for emphasis
-- Bullet points for lists
-- ### Headings for sections
-- Keep responses focused and scannable`;
-
   app.post("/api/ai/companion", async (req, res) => {
     try {
       const result = companionRequestSchema.safeParse(req.body);
@@ -881,7 +860,7 @@ User Question: ${message}`;
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
-          { role: "system", content: COMPANION_SYSTEM_PROMPT },
+          { role: "system", content: VANTIS_SYSTEM_PROMPT },
           { role: "user", content: userPrompt },
         ],
         temperature: 0.7,
