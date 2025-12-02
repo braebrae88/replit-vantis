@@ -40,6 +40,10 @@ export const projectStatusEnum = pgEnum("project_status", ["ACTIVE", "ARCHIVED"]
 export const opportunitySuggestionStatusEnum = pgEnum("opportunity_suggestion_status", ["PENDING", "APPROVED", "REJECTED"]);
 export const evidenceTagEnum = pgEnum("evidence_tag", ["explicit_language", "expansion_request", "funding_window"]);
 
+// Risk Scoring Enums
+export const riskScoredByEnum = pgEnum("risk_scored_by", ["AI", "USER"]);
+export const riskScoreAuditActionEnum = pgEnum("risk_score_audit_action", ["SUGGEST", "ACCEPT", "EDIT", "REJECT"]);
+
 // Projects Table
 export const projects = pgTable("projects", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -99,9 +103,16 @@ export const risks = pgTable("risks", {
   category: riskCategoryEnum("category").notNull(),
   likelihood: integer("likelihood").notNull(),
   impact: integer("impact").notNull(),
+  score: integer("score"),
   mitigation: text("mitigation"),
   owner: text("owner"),
   status: riskStatusEnum("status").notNull().default("identified"),
+  aiSuggestedLikelihood: integer("ai_suggested_likelihood"),
+  aiSuggestedImpact: integer("ai_suggested_impact"),
+  aiRationale: text("ai_rationale"),
+  aiEvidenceRefs: text("ai_evidence_refs").array(),
+  lastScoredAt: timestamp("last_scored_at"),
+  lastScoredBy: riskScoredByEnum("last_scored_by"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -307,6 +318,24 @@ export const opportunitySuggestions = pgTable("opportunity_suggestions", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Risk Score Audits Table (tracks all risk scoring changes)
+export const riskScoreAudits = pgTable("risk_score_audits", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  riskId: varchar("risk_id").notNull().references(() => risks.id, { onDelete: "cascade" }),
+  projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  action: riskScoreAuditActionEnum("action").notNull(),
+  actor: riskScoredByEnum("actor").notNull(),
+  priorLikelihood: integer("prior_likelihood"),
+  priorImpact: integer("prior_impact"),
+  priorScore: integer("prior_score"),
+  newLikelihood: integer("new_likelihood"),
+  newImpact: integer("new_impact"),
+  newScore: integer("new_score"),
+  rationale: text("rationale"),
+  evidenceRefs: text("evidence_refs").array(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // Relations
 export const projectsRelations = relations(projects, ({ many }) => ({
   useCases: many(useCases),
@@ -351,7 +380,7 @@ export const readinessScoresRelations = relations(readinessScores, ({ one }) => 
   }),
 }));
 
-export const risksRelations = relations(risks, ({ one }) => ({
+export const risksRelations = relations(risks, ({ one, many }) => ({
   project: one(projects, {
     fields: [risks.projectId],
     references: [projects.id],
@@ -359,6 +388,18 @@ export const risksRelations = relations(risks, ({ one }) => ({
   useCase: one(useCases, {
     fields: [risks.useCaseId],
     references: [useCases.id],
+  }),
+  scoreAudits: many(riskScoreAudits),
+}));
+
+export const riskScoreAuditsRelations = relations(riskScoreAudits, ({ one }) => ({
+  risk: one(risks, {
+    fields: [riskScoreAudits.riskId],
+    references: [risks.id],
+  }),
+  project: one(projects, {
+    fields: [riskScoreAudits.projectId],
+    references: [projects.id],
   }),
 }));
 
@@ -511,6 +552,13 @@ export const insertRiskSchema = createInsertSchema(risks).omit({
 });
 
 export const selectRiskSchema = createSelectSchema(risks);
+
+export const insertRiskScoreAuditSchema = createInsertSchema(riskScoreAudits).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const selectRiskScoreAuditSchema = createSelectSchema(riskScoreAudits);
 
 export const insertTaskSchema = createInsertSchema(tasks).omit({
   id: true,
@@ -710,6 +758,9 @@ export type InsertReadinessScore = z.infer<typeof insertReadinessScoreSchema>;
 
 export type Risk = typeof risks.$inferSelect;
 export type InsertRisk = z.infer<typeof insertRiskSchema>;
+
+export type RiskScoreAudit = typeof riskScoreAudits.$inferSelect;
+export type InsertRiskScoreAudit = z.infer<typeof insertRiskScoreAuditSchema>;
 
 export type Task = typeof tasks.$inferSelect;
 export type InsertTask = z.infer<typeof insertTaskSchema>;
