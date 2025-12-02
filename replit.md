@@ -39,6 +39,11 @@ The backend is built using **Express.js** with **TypeScript**:
 - **API Design**: RESTful API with CRUD operations for all entities
 - **Logging**: Custom request/response logging middleware for debugging
 
+**AI Integration**:
+- VANTIS Companion: AI assistant for project guidance using OpenAI gpt-4o
+- Event Analysis: AI-powered extraction of insights from meeting/email transcripts
+- Centralized system prompts in `server/ai/` directory
+
 **Design Decisions**:
 - Shared schema definitions between client and server to ensure type consistency
 - Middleware pattern for request processing and logging
