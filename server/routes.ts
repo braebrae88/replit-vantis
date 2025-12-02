@@ -52,6 +52,7 @@ import { getDeliverableGuidance } from "./guidanceService";
 import { VANTIS_SYSTEM_PROMPT } from "./ai/systemPrompt";
 import { EVENT_ANALYSIS_SYSTEM_PROMPT, EventAnalysisResult } from "./ai/eventAnalysisPrompt";
 import { STAKEHOLDER_ANALYSIS_SYSTEM_PROMPT, StakeholderAnalysisResult } from "./ai/stakeholderPrompt";
+import { IMPACT_STORY_SYSTEM_PROMPT, ImpactStoryResult } from "./ai/impactStoryPrompt";
 import OpenAI from "openai";
 
 export async function registerRoutes(
@@ -1319,6 +1320,81 @@ User Question: ${message}`;
     } catch (error) {
       console.error("Failed to analyse stakeholder:", error);
       res.status(500).json({ error: "Failed to analyse stakeholder" });
+    }
+  });
+
+  // ============= IMPACT STORY =============
+
+  app.post("/api/ai/projects/:id/impact-story", async (req, res) => {
+    try {
+      const projectId = req.params.id;
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const [metrics, deliverables] = await Promise.all([
+        storage.getMetricSnapshots(projectId),
+        storage.getDeliverables(projectId),
+      ]);
+
+      const metricsText = metrics.length > 0
+        ? metrics.map(m => {
+            const parts = [`• ${m.name}`];
+            if (m.description) parts.push(`  Description: ${m.description}`);
+            if (m.unit) parts.push(`  Unit: ${m.unit}`);
+            if (m.baseline !== null) parts.push(`  Baseline: ${m.baseline}`);
+            if (m.currentValue !== null) parts.push(`  Current: ${m.currentValue}`);
+            if (m.targetValue !== null) parts.push(`  Target: ${m.targetValue}`);
+            return parts.join("\n");
+          }).join("\n\n")
+        : "No metrics have been captured yet.";
+
+      const deliverablesText = deliverables.length > 0
+        ? deliverables.map(d => `• ${d.name}: ${d.description} (Status: ${d.status}, Progress: ${d.progress}%)`).join("\n")
+        : "No deliverables defined.";
+
+      const userPrompt = `Project: ${project.name}
+Description: ${project.description || "Not specified"}
+Client: ${project.clientName || "Not specified"}
+Phase: ${project.phase}
+
+Metrics:
+${metricsText}
+
+Key Deliverables:
+${deliverablesText}
+
+Please generate an impact story based on this information.`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: IMPACT_STORY_SYSTEM_PROMPT },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.4,
+        max_tokens: 1500,
+        response_format: { type: "json_object" },
+      });
+
+      const responseText = completion.choices[0]?.message?.content;
+      if (!responseText) {
+        return res.status(500).json({ error: "No response from AI" });
+      }
+
+      let result: ImpactStoryResult;
+      try {
+        result = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error("Failed to parse AI response:", responseText);
+        return res.status(500).json({ error: "Failed to parse AI response" });
+      }
+
+      res.json(result);
+    } catch (error) {
+      console.error("Failed to generate impact story:", error);
+      res.status(500).json({ error: "Failed to generate impact story" });
     }
   });
 
