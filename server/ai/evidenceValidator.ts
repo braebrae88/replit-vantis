@@ -156,6 +156,11 @@ export function filterValidOpportunityHints(
   hints: Array<Partial<OpportunityHint> | string>,
   rawTranscript: string
 ): OpportunityHint[] {
+  if (!rawTranscript || rawTranscript.trim().length < 10) {
+    console.log("[EvidenceValidator] Transcript missing or too short, filtering all hints");
+    return [];
+  }
+
   const evidence = detectEvidenceInTranscript(rawTranscript);
   
   if (!evidence.hasEvidence) {

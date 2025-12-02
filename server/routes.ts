@@ -1326,8 +1326,8 @@ ${section.content || 'None'}`;
       // Create a new proposal from the suggestion
       const newProposal = await storage.createProposal({
         title: suggestion.title,
-        clientName: suggestion.clientName,
-        description: suggestion.rationale,
+        clientName: suggestion.clientName || "Unknown Client",
+        rawText: suggestion.rationale,
         status: "DRAFT",
       });
 
@@ -1712,8 +1712,7 @@ User Question: ${message}`;
       }
 
       const createdSuggestions: any[] = [];
-      const rawTranscript = event.rawTranscript || event.title || "";
-      const validHints = filterValidOpportunityHints(analysis.opportunityHints || [], rawTranscript);
+      const validHints = filterValidOpportunityHints(analysis.opportunityHints || [], rawText);
       
       for (const hint of validHints) {
         const suggestion = await storage.createOpportunitySuggestion({
@@ -1722,7 +1721,7 @@ User Question: ${message}`;
           clientName: hint.clientName || null,
           rationale: hint.rationale,
           supportingQuotes: hint.supportingQuotes,
-          evidenceTag: hint.evidenceTag || inferEvidenceTag(hint.supportingQuotes, rawTranscript),
+          evidenceTag: hint.evidenceTag || inferEvidenceTag(hint.supportingQuotes, rawText),
           confidence: typeof hint.confidence === 'number' ? hint.confidence : 0.5,
           sourceEventId: event.id,
           status: "PENDING",

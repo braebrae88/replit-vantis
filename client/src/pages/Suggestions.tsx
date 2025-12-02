@@ -6,8 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle, XCircle, Lightbulb, Building2, FileText, Sparkles } from "lucide-react";
+import { CheckCircle, XCircle, Lightbulb, Building2, FileText, Sparkles, Quote, Tag } from "lucide-react";
 import { ProjectSidebar } from "@/components/ProjectSidebar";
+
+const EVIDENCE_TAG_LABELS: Record<string, string> = {
+  explicit_language: "Explicit expansion language",
+  expansion_request: "Department expansion",
+  funding_window: "Funding opportunity",
+};
 
 function SuggestionCard({ 
   suggestion,
@@ -23,6 +29,8 @@ function SuggestionCard({
   isRejecting: boolean;
 }) {
   const confidencePercent = Math.round((suggestion.confidence || 0.5) * 100);
+  const supportingQuotes = suggestion.supportingQuotes || [];
+  const evidenceTag = suggestion.evidenceTag;
   
   return (
     <Card className="border-l-4 border-l-amber-500" data-testid={`card-suggestion-${suggestion.id}`}>
@@ -32,13 +40,37 @@ function SuggestionCard({
             <Lightbulb className="h-5 w-5 text-amber-500" />
             <CardTitle className="text-lg">{suggestion.title}</CardTitle>
           </div>
-          <Badge variant="outline" className="shrink-0">
-            {confidencePercent}% confidence
-          </Badge>
+          <div className="flex items-center gap-2">
+            {evidenceTag && (
+              <Badge variant="secondary" className="text-xs">
+                <Tag className="h-3 w-3 mr-1" />
+                {EVIDENCE_TAG_LABELS[evidenceTag] || evidenceTag}
+              </Badge>
+            )}
+            <Badge variant="outline" className="shrink-0">
+              {confidencePercent}% confidence
+            </Badge>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">{suggestion.rationale}</p>
+        
+        {supportingQuotes.length > 0 && (
+          <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Quote className="h-3 w-3" />
+              <span>Supporting evidence from transcript</span>
+            </div>
+            <ul className="space-y-1.5">
+              {supportingQuotes.map((quote, index) => (
+                <li key={index} className="text-sm italic text-foreground/80 border-l-2 border-amber-400 pl-2">
+                  "{quote}"
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         
         <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
           {suggestion.clientName && (
