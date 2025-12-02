@@ -494,6 +494,29 @@ export const api = {
     },
   },
 
+  // Event Analysis
+  eventAnalysis: {
+    analyse: async (eventId: string, rawText: string): Promise<{
+      analysis: {
+        summaryBullets: string[];
+        decisions: string[];
+        risks: string[];
+        openQuestions: string[];
+        opportunityHints: string[];
+        sentiment: "POSITIVE" | "NEUTRAL" | "NEGATIVE";
+      };
+      createdInsights: number;
+      createdSeeds: number;
+    }> => {
+      const response = await fetch(`/api/ai/events/${eventId}/analyse`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rawText }),
+      });
+      return handleResponse(response);
+    },
+  },
+
   // Opportunity Seeds
   opportunitySeeds: {
     list: async (projectId: string): Promise<OpportunitySeed[]> => {

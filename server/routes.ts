@@ -37,6 +37,7 @@ import {
   type Milestone,
 } from "@shared/schema";
 import { fromError } from "zod-validation-error";
+import { z } from "zod";
 import { instantiateDeliverableFromTemplate, DELIVERABLE_TEMPLATES, type DeliverableTemplate, type WorkshopTemplate } from "./deliverableTemplates";
 import {
   getDeliverableMetrics,

@@ -25,7 +25,16 @@ import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Collapsible,
   CollapsibleContent,
@@ -448,6 +457,39 @@ function RisksTab({ projectId, risks }: { projectId: string; risks: Risk[] }) {
 }
 
 function ActivityTab({ projectId, events }: { projectId: string; events: Event[] }) {
+  const [analysingEventId, setAnalysingEventId] = useState<string | null>(null);
+  const [analysisText, setAnalysisText] = useState("");
+  const [isAnalysing, setIsAnalysing] = useState(false);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const selectedEvent = events.find(e => e.id === analysingEventId);
+
+  const handleAnalyse = async () => {
+    if (!analysingEventId || !analysisText.trim()) return;
+    
+    setIsAnalysing(true);
+    try {
+      const result = await api.eventAnalysis.analyse(analysingEventId, analysisText);
+      toast({
+        title: "Analysis Complete",
+        description: `Created ${result.createdInsights} insights and ${result.createdSeeds} opportunity seeds.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["engagementInsights", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["opportunitySeeds", projectId] });
+      setAnalysingEventId(null);
+      setAnalysisText("");
+    } catch (error) {
+      toast({
+        title: "Analysis Failed",
+        description: error instanceof Error ? error.message : "Failed to analyse event",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAnalysing(false);
+    }
+  };
+
   const getEventIcon = (type: string) => {
     switch (type) {
       case "file":
@@ -563,6 +605,17 @@ function ActivityTab({ projectId, events }: { projectId: string; events: Event[]
                           {metadata.filePath}
                         </div>
                       )}
+                      <div className="mt-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setAnalysingEventId(event.id)}
+                          data-testid={`button-analyse-event-${event.id}`}
+                        >
+                          <Sparkles className="w-3 h-3 mr-1" />
+                          Analyse with VANTIS
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </CardContent>
@@ -571,6 +624,69 @@ function ActivityTab({ projectId, events }: { projectId: string; events: Event[]
           })}
         </div>
       )}
+
+      <Dialog open={!!analysingEventId} onOpenChange={(open) => !open && setAnalysingEventId(null)}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-purple-500" />
+              Analyse Event with VANTIS
+            </DialogTitle>
+            <DialogDescription>
+              {selectedEvent && (
+                <>Analysing: <span className="font-medium">{selectedEvent.title}</span></>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                Paste the meeting notes, email body, or transcript below:
+              </label>
+              <Textarea
+                placeholder="Enter the raw text content to analyse..."
+                value={analysisText}
+                onChange={(e) => setAnalysisText(e.target.value)}
+                rows={12}
+                className="font-mono text-sm"
+                data-testid="textarea-analysis-text"
+              />
+              <p className="text-xs text-muted-foreground">
+                VANTIS will extract decisions, risks, open questions, and potential opportunities from this text.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAnalysingEventId(null);
+                setAnalysisText("");
+              }}
+              disabled={isAnalysing}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAnalyse}
+              disabled={isAnalysing || analysisText.trim().length < 10}
+              data-testid="button-run-analysis"
+            >
+              {isAnalysing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Analysing...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Run Analysis
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
