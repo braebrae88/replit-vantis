@@ -71,6 +71,7 @@ import { getDeliverableGuidance } from "./guidanceService";
 import { VANTIS_SYSTEM_PROMPT } from "./ai/systemPrompt";
 import { EVENT_ANALYSIS_SYSTEM_PROMPT, EventAnalysisResult } from "./ai/eventAnalysisPrompt";
 import { STAKEHOLDER_ANALYSIS_SYSTEM_PROMPT, StakeholderAnalysisResult } from "./ai/stakeholderPrompt";
+import { filterValidOpportunityHints, detectEvidenceInTranscript, inferEvidenceTag } from "./ai/evidenceValidator";
 import { IMPACT_STORY_SYSTEM_PROMPT, ImpactStoryResult } from "./ai/impactStoryPrompt";
 import { ACCOUNT_GROWTH_SYSTEM_PROMPT, AccountGrowthResult, RuleBasedSuggestion, EngagementIdea } from "./ai/accountGrowthPrompt";
 import { TRANSCRIPT_INTAKE_SYSTEM_PROMPT, buildTranscriptIntakePrompt, TranscriptAnalysisResult } from "./ai/transcriptIntakePrompt";
@@ -1711,30 +1712,27 @@ User Question: ${message}`;
       }
 
       const createdSuggestions: any[] = [];
-      for (const hint of analysis.opportunityHints || []) {
-        if (typeof hint === 'string') {
-          const suggestion = await storage.createOpportunitySuggestion({
-            projectId: eventProjectId,
-            title: hint.length > 100 ? hint.substring(0, 97) + "..." : hint,
-            clientName: null,
-            rationale: hint,
-            confidence: 0.5,
-            sourceEventId: event.id,
-            status: "PENDING",
-          });
-          createdSuggestions.push(suggestion);
-        } else if (hint && typeof hint === 'object' && hint.title && hint.rationale) {
-          const suggestion = await storage.createOpportunitySuggestion({
-            projectId: eventProjectId,
-            title: hint.title,
-            clientName: hint.clientName || null,
-            rationale: hint.rationale,
-            confidence: typeof hint.confidence === 'number' ? hint.confidence : 0.5,
-            sourceEventId: event.id,
-            status: "PENDING",
-          });
-          createdSuggestions.push(suggestion);
-        }
+      const rawTranscript = event.rawTranscript || event.title || "";
+      const validHints = filterValidOpportunityHints(analysis.opportunityHints || [], rawTranscript);
+      
+      for (const hint of validHints) {
+        const suggestion = await storage.createOpportunitySuggestion({
+          projectId: eventProjectId,
+          title: hint.title,
+          clientName: hint.clientName || null,
+          rationale: hint.rationale,
+          supportingQuotes: hint.supportingQuotes,
+          evidenceTag: hint.evidenceTag || inferEvidenceTag(hint.supportingQuotes, rawTranscript),
+          confidence: typeof hint.confidence === 'number' ? hint.confidence : 0.5,
+          sourceEventId: event.id,
+          status: "PENDING",
+        });
+        createdSuggestions.push(suggestion);
+      }
+
+      const filteredCount = (analysis.opportunityHints || []).length - validHints.length;
+      if (filteredCount > 0) {
+        console.log(`[EventAnalysis] Filtered out ${filteredCount} opportunity hints due to insufficient evidence`);
       }
 
       let artifactPopulation = { artifactsUpdated: 0, sectionsUpdated: 0 };
@@ -1750,6 +1748,7 @@ User Question: ${message}`;
         createdInsights: createdInsights.length,
         createdSeeds: createdSeeds.length,
         createdSuggestions: createdSuggestions.length,
+        filteredSuggestions: filteredCount,
         insights: createdInsights,
         seeds: createdSeeds,
         suggestions: createdSuggestions,
@@ -2115,30 +2114,26 @@ Please generate an impact story based on this information.`;
       });
 
       const createdSuggestions: any[] = [];
-      for (const hint of analysis.opportunityHints || []) {
-        if (typeof hint === 'string') {
-          const suggestion = await storage.createOpportunitySuggestion({
-            projectId,
-            title: hint.length > 100 ? hint.substring(0, 97) + "..." : hint,
-            clientName: null,
-            rationale: hint,
-            confidence: 0.5,
-            sourceEventId: createdEvent.id,
-            status: "PENDING",
-          });
-          createdSuggestions.push(suggestion);
-        } else if (hint && typeof hint === 'object' && hint.title && hint.rationale) {
-          const suggestion = await storage.createOpportunitySuggestion({
-            projectId,
-            title: hint.title,
-            clientName: hint.clientName || null,
-            rationale: hint.rationale,
-            confidence: typeof hint.confidence === 'number' ? hint.confidence : 0.5,
-            sourceEventId: createdEvent.id,
-            status: "PENDING",
-          });
-          createdSuggestions.push(suggestion);
-        }
+      const validHints = filterValidOpportunityHints(analysis.opportunityHints || [], rawTranscript);
+      
+      for (const hint of validHints) {
+        const suggestion = await storage.createOpportunitySuggestion({
+          projectId,
+          title: hint.title,
+          clientName: hint.clientName || null,
+          rationale: hint.rationale,
+          supportingQuotes: hint.supportingQuotes,
+          evidenceTag: hint.evidenceTag || inferEvidenceTag(hint.supportingQuotes, rawTranscript),
+          confidence: typeof hint.confidence === 'number' ? hint.confidence : 0.5,
+          sourceEventId: createdEvent.id,
+          status: "PENDING",
+        });
+        createdSuggestions.push(suggestion);
+      }
+
+      const filteredCount = (analysis.opportunityHints || []).length - validHints.length;
+      if (filteredCount > 0) {
+        console.log(`[TranscriptIntake] Filtered out ${filteredCount} opportunity hints due to insufficient evidence`);
       }
 
       let artifactPopulation = { artifactsUpdated: 0, sectionsUpdated: 0 };
@@ -2168,6 +2163,7 @@ Please generate an impact story based on this information.`;
         risks: createdRisks,
         stakeholders: updatedStakeholders,
         opportunitySuggestions: createdSuggestions,
+        filteredSuggestions: filteredCount,
         nextActions: allNextActions,
         transcriptSuggestedActions: transcriptNextActions,
         summary: analysis.summary,
