@@ -30,6 +30,10 @@ import type {
   InsertOpportunitySeed,
   MetricSnapshot,
   InsertMetricSnapshot,
+  Artifact,
+  ArtifactSection,
+  ArtifactWithSections,
+  InsertArtifact,
 } from "@shared/schema";
 
 export interface ImpactStoryResponse {
@@ -720,6 +724,58 @@ export const api = {
       if (!response.ok) {
         throw new Error("Failed to delete metric snapshot");
       }
+    },
+  },
+
+  // Artifacts
+  artifacts: {
+    list: async (projectId: string): Promise<ArtifactWithSections[]> => {
+      const response = await fetch(`/api/projects/${projectId}/artifacts`);
+      return handleResponse(response);
+    },
+    get: async (id: string): Promise<ArtifactWithSections> => {
+      const response = await fetch(`/api/artifacts/${id}`);
+      return handleResponse(response);
+    },
+    create: async (projectId: string, data: Omit<InsertArtifact, 'projectId'>): Promise<Artifact> => {
+      const response = await fetch(`/api/projects/${projectId}/artifacts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      return handleResponse(response);
+    },
+    update: async (id: string, data: Partial<InsertArtifact>): Promise<Artifact> => {
+      const response = await fetch(`/api/artifacts/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      return handleResponse(response);
+    },
+    delete: async (id: string): Promise<void> => {
+      const response = await fetch(`/api/artifacts/${id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to delete artifact");
+      }
+    },
+  },
+
+  // Artifact Sections
+  artifactSections: {
+    list: async (artifactId: string): Promise<ArtifactSection[]> => {
+      const response = await fetch(`/api/artifacts/${artifactId}/sections`);
+      return handleResponse(response);
+    },
+    update: async (id: string, data: { status?: string; content?: string }): Promise<ArtifactSection> => {
+      const response = await fetch(`/api/artifact-sections/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      return handleResponse(response);
     },
   },
 

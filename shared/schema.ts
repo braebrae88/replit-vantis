@@ -26,6 +26,10 @@ export const sentimentEnum = pgEnum("sentiment", ["positive", "neutral", "negati
 export const importanceEnum = pgEnum("importance", ["low", "medium", "high"]);
 export const opportunityStatusEnum = pgEnum("opportunity_status", ["idea", "qualified", "proposed", "won", "lost"]);
 
+// Artifact Enums
+export const artifactTypeEnum = pgEnum("artifact_type", ["activation_map_doc", "exec_brief", "funding_nav_pack", "safe_prototype_doc", "stakeholder_map", "value_scorecard_doc", "custom"]);
+export const sectionStatusEnum = pgEnum("section_status", ["empty", "partial", "complete"]);
+
 // Projects Table
 export const projects = pgTable("projects", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -221,6 +225,33 @@ export const metricSnapshots = pgTable("metric_snapshots", {
   capturedAt: timestamp("captured_at").notNull().defaultNow(),
 });
 
+// Artifacts Table
+export const artifacts = pgTable("artifacts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  deliverableId: varchar("deliverable_id").references(() => deliverables.id, { onDelete: "set null" }),
+  type: artifactTypeEnum("type").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  content: text("content"),
+  completionPct: real("completion_pct").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Artifact Sections Table
+export const artifactSections = pgTable("artifact_sections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  artifactId: varchar("artifact_id").notNull().references(() => artifacts.id, { onDelete: "cascade" }),
+  key: text("key").notNull(),
+  label: text("label").notNull(),
+  status: sectionStatusEnum("status").notNull().default("empty"),
+  content: text("content"),
+  orderIndex: integer("order_index").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 // Relations
 export const projectsRelations = relations(projects, ({ many }) => ({
   useCases: many(useCases),
@@ -233,6 +264,7 @@ export const projectsRelations = relations(projects, ({ many }) => ({
   engagementInsights: many(engagementInsights),
   opportunitySeeds: many(opportunitySeeds),
   metricSnapshots: many(metricSnapshots),
+  artifacts: many(artifacts),
 }));
 
 export const useCasesRelations = relations(useCases, ({ one, many }) => ({
@@ -307,6 +339,7 @@ export const deliverablesRelations = relations(deliverables, ({ one, many }) => 
     references: [projects.id],
   }),
   milestones: many(milestones),
+  artifacts: many(artifacts),
 }));
 
 export const milestonesRelations = relations(milestones, ({ one, many }) => ({
@@ -346,6 +379,25 @@ export const metricSnapshotsRelations = relations(metricSnapshots, ({ one }) => 
   project: one(projects, {
     fields: [metricSnapshots.projectId],
     references: [projects.id],
+  }),
+}));
+
+export const artifactsRelations = relations(artifacts, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [artifacts.projectId],
+    references: [projects.id],
+  }),
+  deliverable: one(deliverables, {
+    fields: [artifacts.deliverableId],
+    references: [deliverables.id],
+  }),
+  sections: many(artifactSections),
+}));
+
+export const artifactSectionsRelations = relations(artifactSections, ({ one }) => ({
+  artifact: one(artifacts, {
+    fields: [artifactSections.artifactId],
+    references: [artifacts.id],
   }),
 }));
 
@@ -467,6 +519,30 @@ export const updateMetricSnapshotSchema = insertMetricSnapshotSchema.partial().e
 
 export const selectMetricSnapshotSchema = createSelectSchema(metricSnapshots);
 
+export const insertArtifactSchema = createInsertSchema(artifacts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateArtifactSchema = insertArtifactSchema.partial().extend({
+  id: z.string().uuid("Invalid artifact ID format"),
+});
+
+export const selectArtifactSchema = createSelectSchema(artifacts);
+
+export const insertArtifactSectionSchema = createInsertSchema(artifactSections).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateArtifactSectionSchema = insertArtifactSectionSchema.partial().extend({
+  id: z.string().uuid("Invalid artifact section ID format"),
+});
+
+export const selectArtifactSectionSchema = createSelectSchema(artifactSections);
+
 export const insertFileEventSchema = z.object({
   projectId: z.string().uuid("Invalid project ID format"),
   fileName: z.string().min(1, "File name is required"),
@@ -541,6 +617,16 @@ export type UpdateOpportunitySeed = z.infer<typeof updateOpportunitySeedSchema>;
 export type MetricSnapshot = typeof metricSnapshots.$inferSelect;
 export type InsertMetricSnapshot = z.infer<typeof insertMetricSnapshotSchema>;
 export type UpdateMetricSnapshot = z.infer<typeof updateMetricSnapshotSchema>;
+
+export type Artifact = typeof artifacts.$inferSelect;
+export type InsertArtifact = z.infer<typeof insertArtifactSchema>;
+export type UpdateArtifact = z.infer<typeof updateArtifactSchema>;
+
+export type ArtifactSection = typeof artifactSections.$inferSelect;
+export type InsertArtifactSection = z.infer<typeof insertArtifactSectionSchema>;
+export type UpdateArtifactSection = z.infer<typeof updateArtifactSectionSchema>;
+
+export type ArtifactWithSections = Artifact & { sections: ArtifactSection[] };
 
 // Next Actions Types (not stored in DB, computed on-the-fly)
 export const nextActionSeverityEnum = ["low", "medium", "high", "critical"] as const;

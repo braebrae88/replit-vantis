@@ -1,0 +1,56 @@
+Prompt:
+“Add an artifact system to track the documents/deliverables VANTIS is building in the background.
+
+In schema.prisma, add:
+
+model Artifact {
+  id             String      @id @default(cuid())
+  project        Project     @relation(fields: [projectId], references: [id])
+  projectId      String
+  deliverable    Deliverable? @relation(fields: [deliverableId], references: [id])
+  deliverableId  String?
+  type           String      // e.g. 'ACTIVATION_MAP_DOC', 'EXEC_BRIEF', 'FUNDING_NAV_PACK'
+  title          String
+  description    String?
+  content        String?     // markdown or serialized JSON
+  completionPct  Float       @default(0)
+  requiredSections ArtifactSection[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+model ArtifactSection {
+  id          String   @id @default(cuid())
+  artifact    Artifact @relation(fields: [artifactId], references: [id])
+  artifactId  String
+  key         String   // e.g. 'problem_statement', 'current_state', 'future_state', 'risks', 'roadmap'
+  label       String
+  status      String   // 'EMPTY', 'PARTIAL', 'COMPLETE'
+  content     String?  // optional section-level content
+  orderIndex  Int
+}
+
+
+Add a service function updateArtifactCompletion(artifactId) that:
+
+looks at all sections for that artifact,
+
+computes completionPct = % of sections with status = 'COMPLETE' (or weighted if needed),
+
+updates the Artifact row.
+
+Add endpoints:
+
+GET /projects/:projectId/artifacts → list all artifacts with sections and completionPct,
+
+GET /artifacts/:artifactId → full details,
+
+PATCH /artifact-sections/:sectionId to update status/content for a section and then recompute completionPct.
+
+Seed a few standard artifact templates when a Deliverable is created, e.g.:
+
+For ACTIVATION_MAP deliverable: create an Artifact with sections ‘Context’, ‘Key Workflows’, ‘Readiness Summary’, ‘Dependencies’, ‘Activation Sequence’, ‘Risks & Mitigations’.
+
+For EXEC_FRAMING: sections like ‘Headline Story’, ‘Key Metrics’, ‘Risks’, ‘Asks & Decisions’, ‘Next 90 Days’.
+
+We will later hook AI to auto-fill these sections from meetings and activities.

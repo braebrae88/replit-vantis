@@ -34,6 +34,7 @@ import {
   insertEngagementInsightSchema,
   insertOpportunitySeedSchema,
   insertMetricSnapshotSchema,
+  insertArtifactSchema,
   updateOpportunitySeedSchema,
   companionRequestSchema,
   type NextAction,
@@ -869,6 +870,133 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete metric snapshot" });
+    }
+  });
+
+  // ============= ARTIFACTS =============
+
+  app.get("/api/projects/:id/artifacts", async (req, res) => {
+    try {
+      const projectId = req.params.id;
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      const artifacts = await storage.getArtifacts(projectId);
+      res.json(artifacts);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch artifacts" });
+    }
+  });
+
+  app.get("/api/artifacts/:id", async (req, res) => {
+    try {
+      const artifact = await storage.getArtifact(req.params.id);
+      if (!artifact) {
+        return res.status(404).json({ error: "Artifact not found" });
+      }
+      res.json(artifact);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch artifact" });
+    }
+  });
+
+  app.post("/api/projects/:id/artifacts", async (req, res) => {
+    try {
+      const projectId = req.params.id;
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const result = insertArtifactSchema.safeParse({ ...req.body, projectId });
+      if (!result.success) {
+        return res.status(400).json({ error: fromError(result.error).toString() });
+      }
+
+      const artifact = await storage.createArtifact(result.data);
+      res.status(201).json(artifact);
+    } catch (error) {
+      console.error("Failed to create artifact:", error);
+      res.status(500).json({ error: "Failed to create artifact" });
+    }
+  });
+
+  app.patch("/api/artifacts/:id", async (req, res) => {
+    try {
+      const existingArtifact = await storage.getArtifact(req.params.id);
+      if (!existingArtifact) {
+        return res.status(404).json({ error: "Artifact not found" });
+      }
+
+      const allowedFields = ["title", "description", "content", "completionPct"];
+      const filteredBody = Object.fromEntries(
+        Object.entries(req.body).filter(([key]) => allowedFields.includes(key))
+      );
+
+      if (Object.keys(filteredBody).length === 0) {
+        return res.status(400).json({ error: "No valid fields provided for update" });
+      }
+
+      const artifact = await storage.updateArtifact(req.params.id, filteredBody);
+      res.json(artifact);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update artifact" });
+    }
+  });
+
+  app.delete("/api/artifacts/:id", async (req, res) => {
+    try {
+      const success = await storage.deleteArtifact(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Artifact not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete artifact" });
+    }
+  });
+
+  // ============= ARTIFACT SECTIONS =============
+
+  app.get("/api/artifacts/:id/sections", async (req, res) => {
+    try {
+      const artifact = await storage.getArtifact(req.params.id);
+      if (!artifact) {
+        return res.status(404).json({ error: "Artifact not found" });
+      }
+      const sections = await storage.getArtifactSections(req.params.id);
+      res.json(sections);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch artifact sections" });
+    }
+  });
+
+  app.patch("/api/artifact-sections/:id", async (req, res) => {
+    try {
+      const existingSection = await storage.getArtifactSection(req.params.id);
+      if (!existingSection) {
+        return res.status(404).json({ error: "Artifact section not found" });
+      }
+
+      const allowedFields = ["status", "content"];
+      const filteredBody = Object.fromEntries(
+        Object.entries(req.body).filter(([key]) => allowedFields.includes(key))
+      );
+
+      if (Object.keys(filteredBody).length === 0) {
+        return res.status(400).json({ error: "No valid fields provided for update" });
+      }
+
+      const section = await storage.updateArtifactSection(req.params.id, filteredBody);
+      
+      // Recompute artifact completion percentage
+      const { updateArtifactCompletion } = await import("./artifactService");
+      await updateArtifactCompletion(existingSection.artifactId);
+      
+      res.json(section);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update artifact section" });
     }
   });
 

@@ -1,5 +1,70 @@
 import { db } from "./db";
-import { deliverables, milestones, activities, type InsertDeliverable, type InsertMilestone, type InsertActivity } from "@shared/schema";
+import { deliverables, milestones, activities, artifacts, artifactSections, type InsertDeliverable, type InsertMilestone, type InsertActivity, type InsertArtifact, type InsertArtifactSection } from "@shared/schema";
+
+type ArtifactTemplateSection = {
+  key: string;
+  label: string;
+  orderIndex: number;
+};
+
+type ArtifactTemplateConfig = {
+  type: "activation_map_doc" | "exec_brief" | "funding_nav_pack" | "safe_prototype_doc" | "stakeholder_map" | "value_scorecard_doc" | "custom";
+  title: string;
+  description: string;
+  sections: ArtifactTemplateSection[];
+};
+
+const ARTIFACT_TEMPLATES: Record<string, ArtifactTemplateConfig> = {
+  activation_map: {
+    type: "activation_map_doc",
+    title: "Activation Map Document",
+    description: "Comprehensive activation map showing workflows, readiness, and activation sequence",
+    sections: [
+      { key: "context", label: "Context", orderIndex: 0 },
+      { key: "key_workflows", label: "Key Workflows", orderIndex: 1 },
+      { key: "readiness_summary", label: "Readiness Summary", orderIndex: 2 },
+      { key: "dependencies", label: "Dependencies", orderIndex: 3 },
+      { key: "activation_sequence", label: "Activation Sequence", orderIndex: 4 },
+      { key: "risks_mitigations", label: "Risks & Mitigations", orderIndex: 5 },
+    ],
+  },
+  exec_framing: {
+    type: "exec_brief",
+    title: "Executive Framing Brief",
+    description: "Executive-level framing document for stakeholder alignment",
+    sections: [
+      { key: "headline_story", label: "Headline Story", orderIndex: 0 },
+      { key: "key_metrics", label: "Key Metrics", orderIndex: 1 },
+      { key: "risks", label: "Risks", orderIndex: 2 },
+      { key: "asks_decisions", label: "Asks & Decisions", orderIndex: 3 },
+      { key: "next_90_days", label: "Next 90 Days", orderIndex: 4 },
+    ],
+  },
+  ms_funding_nav: {
+    type: "funding_nav_pack",
+    title: "MS Funding Navigation Pack",
+    description: "Documentation for Microsoft funding navigation and approvals",
+    sections: [
+      { key: "funding_overview", label: "Funding Overview", orderIndex: 0 },
+      { key: "budget_breakdown", label: "Budget Breakdown", orderIndex: 1 },
+      { key: "approval_path", label: "Approval Path", orderIndex: 2 },
+      { key: "timeline", label: "Timeline", orderIndex: 3 },
+      { key: "stakeholder_signoffs", label: "Stakeholder Sign-offs", orderIndex: 4 },
+    ],
+  },
+  safe_prototypes: {
+    type: "safe_prototype_doc",
+    title: "SAFE Prototype Documentation",
+    description: "Documentation for SAFE prototype development and validation",
+    sections: [
+      { key: "prototype_scope", label: "Prototype Scope", orderIndex: 0 },
+      { key: "technical_approach", label: "Technical Approach", orderIndex: 1 },
+      { key: "data_requirements", label: "Data Requirements", orderIndex: 2 },
+      { key: "validation_criteria", label: "Validation Criteria", orderIndex: 3 },
+      { key: "learnings", label: "Learnings & Next Steps", orderIndex: 4 },
+    ],
+  },
+};
 
 export type RASCIEntry = {
   role: string;
@@ -774,7 +839,7 @@ export const DELIVERABLE_TEMPLATES: DeliverableTemplate[] = [
 export async function instantiateDeliverableFromTemplate(
   projectId: string,
   templateType: DeliverableTemplate["type"]
-): Promise<{ deliverableId: string; milestonesCreated: number; activitiesCreated: number }> {
+): Promise<{ deliverableId: string; milestonesCreated: number; activitiesCreated: number; artifactCreated: boolean }> {
   const template = DELIVERABLE_TEMPLATES.find((t) => t.type === templateType);
   if (!template) {
     throw new Error(`Unknown template type: ${templateType}`);
@@ -794,6 +859,7 @@ export async function instantiateDeliverableFromTemplate(
 
     let milestonesCreated = 0;
     let activitiesCreated = 0;
+    let artifactCreated = false;
 
     for (let mIndex = 0; mIndex < template.milestones.length; mIndex++) {
       const milestoneTemplate = template.milestones[mIndex];
@@ -829,10 +895,37 @@ export async function instantiateDeliverableFromTemplate(
       }
     }
 
+    // Create artifact from template if one exists for this deliverable type
+    const artifactTemplate = ARTIFACT_TEMPLATES[templateType];
+    if (artifactTemplate) {
+      const artifactData: InsertArtifact = {
+        projectId,
+        deliverableId: deliverable.id,
+        type: artifactTemplate.type,
+        title: artifactTemplate.title,
+        description: artifactTemplate.description,
+        completionPct: 0,
+      };
+
+      const [artifact] = await tx.insert(artifacts).values(artifactData).returning();
+
+      const sectionData: InsertArtifactSection[] = artifactTemplate.sections.map((s) => ({
+        artifactId: artifact.id,
+        key: s.key,
+        label: s.label,
+        status: "empty" as const,
+        orderIndex: s.orderIndex,
+      }));
+
+      await tx.insert(artifactSections).values(sectionData);
+      artifactCreated = true;
+    }
+
     return {
       deliverableId: deliverable.id,
       milestonesCreated,
       activitiesCreated,
+      artifactCreated,
     };
   });
 }

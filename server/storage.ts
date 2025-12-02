@@ -12,6 +12,9 @@ import {
   activities,
   engagementInsights,
   opportunitySeeds,
+  metricSnapshots,
+  artifacts,
+  artifactSections,
   type Project,
   type InsertProject,
   type UseCase,
@@ -40,7 +43,11 @@ import {
   type InsertOpportunitySeed,
   type MetricSnapshot,
   type InsertMetricSnapshot,
-  metricSnapshots,
+  type Artifact,
+  type InsertArtifact,
+  type ArtifactSection,
+  type InsertArtifactSection,
+  type ArtifactWithSections,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql } from "drizzle-orm";
@@ -153,6 +160,21 @@ export interface IStorage {
   createMetricSnapshot(snapshot: InsertMetricSnapshot): Promise<MetricSnapshot>;
   updateMetricSnapshot(id: string, snapshot: Partial<InsertMetricSnapshot>): Promise<MetricSnapshot | undefined>;
   deleteMetricSnapshot(id: string): Promise<boolean>;
+
+  // Artifacts
+  getArtifacts(projectId: string): Promise<ArtifactWithSections[]>;
+  getArtifact(id: string): Promise<ArtifactWithSections | undefined>;
+  createArtifact(artifact: InsertArtifact): Promise<Artifact>;
+  updateArtifact(id: string, artifact: Partial<InsertArtifact>): Promise<Artifact | undefined>;
+  deleteArtifact(id: string): Promise<boolean>;
+
+  // Artifact Sections
+  getArtifactSections(artifactId: string): Promise<ArtifactSection[]>;
+  getArtifactSection(id: string): Promise<ArtifactSection | undefined>;
+  createArtifactSection(section: InsertArtifactSection): Promise<ArtifactSection>;
+  updateArtifactSection(id: string, section: Partial<InsertArtifactSection>): Promise<ArtifactSection | undefined>;
+  deleteArtifactSection(id: string): Promise<boolean>;
+  createManyArtifactSections(sections: InsertArtifactSection[]): Promise<ArtifactSection[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -636,6 +658,78 @@ export class DatabaseStorage implements IStorage {
   async createManyEngagementInsights(insightsToCreate: InsertEngagementInsight[]): Promise<EngagementInsight[]> {
     if (insightsToCreate.length === 0) return [];
     const created = await db.insert(engagementInsights).values(insightsToCreate).returning();
+    return created;
+  }
+
+  // Artifacts
+  async getArtifacts(projectId: string): Promise<ArtifactWithSections[]> {
+    const allArtifacts = await db.select().from(artifacts).where(eq(artifacts.projectId, projectId)).orderBy(sql`${artifacts.createdAt} desc`);
+    const result: ArtifactWithSections[] = [];
+    for (const artifact of allArtifacts) {
+      const sections = await db.select().from(artifactSections).where(eq(artifactSections.artifactId, artifact.id)).orderBy(artifactSections.orderIndex);
+      result.push({ ...artifact, sections });
+    }
+    return result;
+  }
+
+  async getArtifact(id: string): Promise<ArtifactWithSections | undefined> {
+    const [artifact] = await db.select().from(artifacts).where(eq(artifacts.id, id));
+    if (!artifact) return undefined;
+    const sections = await db.select().from(artifactSections).where(eq(artifactSections.artifactId, id)).orderBy(artifactSections.orderIndex);
+    return { ...artifact, sections };
+  }
+
+  async createArtifact(artifact: InsertArtifact): Promise<Artifact> {
+    const [newArtifact] = await db.insert(artifacts).values(artifact).returning();
+    return newArtifact;
+  }
+
+  async updateArtifact(id: string, artifact: Partial<InsertArtifact>): Promise<Artifact | undefined> {
+    const [updated] = await db
+      .update(artifacts)
+      .set({ ...artifact, updatedAt: new Date() })
+      .where(eq(artifacts.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteArtifact(id: string): Promise<boolean> {
+    const result = await db.delete(artifacts).where(eq(artifacts.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  // Artifact Sections
+  async getArtifactSections(artifactId: string): Promise<ArtifactSection[]> {
+    return await db.select().from(artifactSections).where(eq(artifactSections.artifactId, artifactId)).orderBy(artifactSections.orderIndex);
+  }
+
+  async getArtifactSection(id: string): Promise<ArtifactSection | undefined> {
+    const [section] = await db.select().from(artifactSections).where(eq(artifactSections.id, id));
+    return section;
+  }
+
+  async createArtifactSection(section: InsertArtifactSection): Promise<ArtifactSection> {
+    const [newSection] = await db.insert(artifactSections).values(section).returning();
+    return newSection;
+  }
+
+  async updateArtifactSection(id: string, section: Partial<InsertArtifactSection>): Promise<ArtifactSection | undefined> {
+    const [updated] = await db
+      .update(artifactSections)
+      .set({ ...section, updatedAt: new Date() })
+      .where(eq(artifactSections.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteArtifactSection(id: string): Promise<boolean> {
+    const result = await db.delete(artifactSections).where(eq(artifactSections.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  async createManyArtifactSections(sectionsToCreate: InsertArtifactSection[]): Promise<ArtifactSection[]> {
+    if (sectionsToCreate.length === 0) return [];
+    const created = await db.insert(artifactSections).values(sectionsToCreate).returning();
     return created;
   }
 }
