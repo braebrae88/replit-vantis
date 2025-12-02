@@ -433,6 +433,7 @@ export interface NextAction {
 // AI Companion Types (not stored in DB, computed via AI)
 export const companionRequestSchema = z.object({
   projectId: z.string().uuid("Invalid project ID format"),
+  deliverableId: z.string().uuid("Invalid deliverable ID format").optional(),
   message: z.string().min(1, "Message is required"),
 });
 
@@ -444,9 +445,9 @@ export interface SuggestedTask {
 
 export interface CompanionResponse {
   responseText: string;
-  assumptions: string[];
-  gaps: string[];
-  suggestedTasks: SuggestedTask[];
+  assumptions?: string[];
+  gaps?: string[];
+  suggestedTasks?: SuggestedTask[];
 }
 
 export type CompanionRequest = z.infer<typeof companionRequestSchema>;
