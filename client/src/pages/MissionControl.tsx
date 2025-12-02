@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import vantisIcon from "@assets/vantis_icon.png";
 import { useParams, useSearch, useLocation } from "wouter";
 import { api, ImpactStoryResponse, AccountGrowthResponse, RuleBasedSuggestion, EngagementIdea, ActivityGuidanceResponse, SoWBootstrapResponse } from "@/lib/api";
 import type { Task, UseCase, Risk, Project, Event, NextAction, CompanionResponse, SuggestedTask, StatusReport, RoadmapResponse, RoadmapTask, RoadmapWeek, EngagementInsight, OpportunitySeed, Stakeholder, MetricSnapshot, ArtifactWithSections, ArtifactSection, Deliverable } from "@shared/schema";
@@ -108,37 +109,14 @@ function formatDate(date: Date | string | null | undefined): string {
   }
 }
 
-function VantisIcon({ className }: { className?: string }) {
-  return (
-    <svg 
-      viewBox="0 0 100 100" 
-      fill="none" 
-      xmlns="http://www.w3.org/2000/svg"
-      className={className}
-    >
-      <circle cx="50" cy="50" r="45" stroke="currentColor" strokeWidth="4" fill="none" />
-      <path 
-        d="M50 15L80 70H20L50 15Z" 
-        stroke="currentColor" 
-        strokeWidth="4" 
-        strokeLinejoin="round"
-        fill="none"
-      />
-      <line x1="50" y1="15" x2="50" y2="5" stroke="currentColor" strokeWidth="4" />
-      <line x1="20" y1="70" x2="10" y2="82" stroke="currentColor" strokeWidth="4" />
-      <line x1="80" y1="70" x2="90" y2="82" stroke="currentColor" strokeWidth="4" />
-    </svg>
-  );
-}
-
 function WelcomeScreen() {
   return (
     <div className="flex flex-col items-center justify-center h-[calc(100vh-3.5rem)] p-8">
       <div className="text-center max-w-md">
-        <div className="w-16 h-16 bg-muted rounded-xl flex items-center justify-center mx-auto mb-6">
-          <VantisIcon className="w-8 h-8 text-muted-foreground" />
+        <div className="w-20 h-20 flex items-center justify-center mx-auto mb-6">
+          <img src={vantisIcon} alt="VANTIS" className="w-16 h-16" />
         </div>
-        <h2 className="text-2xl font-bold mb-2">Welcome to VANTIS Mission Control</h2>
+        <h2 className="text-2xl font-bold mb-2" style={{ color: '#6FBFB3' }}>Welcome to VANTIS Mission Control</h2>
         <p className="text-muted-foreground mb-6">
           Select a project from the sidebar to view its details, or create a new project to get started.
         </p>
