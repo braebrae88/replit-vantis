@@ -426,6 +426,35 @@ export const api = {
         throw new Error("Failed to delete risk");
       }
     },
+    scoreWithAI: async (projectId: string): Promise<{ success: boolean; risksScored: number; risks: Risk[] }> => {
+      const response = await fetch(`/api/ai/projects/${projectId}/risks/score`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      return handleResponse(response);
+    },
+    acceptScore: async (riskId: string): Promise<{ success: boolean; risk: Risk }> => {
+      const response = await fetch(`/api/risks/${riskId}/accept-score`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      return handleResponse(response);
+    },
+    editScore: async (riskId: string, likelihood: number, impact: number): Promise<{ success: boolean; risk: Risk }> => {
+      const response = await fetch(`/api/risks/${riskId}/edit-score`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ likelihood, impact }),
+      });
+      return handleResponse(response);
+    },
+    rejectScore: async (riskId: string): Promise<{ success: boolean; risk: Risk }> => {
+      const response = await fetch(`/api/risks/${riskId}/reject-score`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      return handleResponse(response);
+    },
   },
 
   // Stakeholders

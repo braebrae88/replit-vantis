@@ -695,6 +695,13 @@ function TasksTab({ projectId, tasks, highlightedTaskId }: { projectId: string; 
 }
 
 function RisksTab({ projectId, risks, highlightedRiskId }: { projectId: string; risks: Risk[]; highlightedRiskId?: string | null }) {
+  const [isScoring, setIsScoring] = useState(false);
+  const [editingRiskId, setEditingRiskId] = useState<string | null>(null);
+  const [editLikelihood, setEditLikelihood] = useState(1);
+  const [editImpact, setEditImpact] = useState(1);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
   const getRiskScore = (likelihood: number, impact: number) => likelihood * impact;
 
   const getRiskLevel = (score: number) => {
@@ -712,6 +719,66 @@ function RisksTab({ projectId, risks, highlightedRiskId }: { projectId: string; 
     accepted: "bg-purple-100 text-purple-800",
   };
 
+  const hasAnySuggestion = risks.some(r => r.aiSuggestedLikelihood !== null && r.aiSuggestedImpact !== null);
+
+  const handleScoreWithAI = async () => {
+    setIsScoring(true);
+    try {
+      const result = await api.risks.scoreWithAI(projectId);
+      toast({
+        title: "Risk Scoring Complete",
+        description: `VANTIS analyzed ${result.risksScored} risks. Review suggestions below.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["risks", projectId] });
+    } catch (error) {
+      toast({
+        title: "Scoring Failed",
+        description: error instanceof Error ? error.message : "Failed to score risks",
+        variant: "destructive",
+      });
+    } finally {
+      setIsScoring(false);
+    }
+  };
+
+  const handleAccept = async (riskId: string) => {
+    try {
+      await api.risks.acceptScore(riskId);
+      toast({ title: "Score Accepted", description: "AI-suggested score has been applied." });
+      queryClient.invalidateQueries({ queryKey: ["risks", projectId] });
+    } catch (error) {
+      toast({ title: "Failed", description: "Could not accept score", variant: "destructive" });
+    }
+  };
+
+  const handleReject = async (riskId: string) => {
+    try {
+      await api.risks.rejectScore(riskId);
+      toast({ title: "Score Rejected", description: "AI suggestion has been dismissed." });
+      queryClient.invalidateQueries({ queryKey: ["risks", projectId] });
+    } catch (error) {
+      toast({ title: "Failed", description: "Could not reject score", variant: "destructive" });
+    }
+  };
+
+  const handleStartEdit = (risk: Risk) => {
+    setEditingRiskId(risk.id);
+    setEditLikelihood(risk.aiSuggestedLikelihood ?? risk.likelihood);
+    setEditImpact(risk.aiSuggestedImpact ?? risk.impact);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingRiskId) return;
+    try {
+      await api.risks.editScore(editingRiskId, editLikelihood, editImpact);
+      toast({ title: "Score Updated", description: "Your custom score has been saved." });
+      queryClient.invalidateQueries({ queryKey: ["risks", projectId] });
+      setEditingRiskId(null);
+    } catch (error) {
+      toast({ title: "Failed", description: "Could not update score", variant: "destructive" });
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -719,7 +786,25 @@ function RisksTab({ projectId, risks, highlightedRiskId }: { projectId: string; 
           <AlertTriangle className="w-5 h-5 text-muted-foreground" />
           Risk Register ({risks.length})
         </h3>
-        <CreateRiskDialog projectId={projectId} />
+        <div className="flex items-center gap-2">
+          {risks.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleScoreWithAI}
+              disabled={isScoring}
+              data-testid="button-score-risks-ai"
+            >
+              {isScoring ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4 mr-2" />
+              )}
+              Score with VANTIS
+            </Button>
+          )}
+          <CreateRiskDialog projectId={projectId} />
+        </div>
       </div>
 
       {risks.length === 0 ? (
@@ -735,25 +820,44 @@ function RisksTab({ projectId, risks, highlightedRiskId }: { projectId: string; 
               <TableRow>
                 <TableHead>Risk</TableHead>
                 <TableHead>Category</TableHead>
-                <TableHead>L × I</TableHead>
+                <TableHead>Current L × I</TableHead>
+                {hasAnySuggestion && <TableHead>AI Suggestion</TableHead>}
                 <TableHead>Risk Level</TableHead>
                 <TableHead>Owner</TableHead>
                 <TableHead>Status</TableHead>
+                {hasAnySuggestion && <TableHead>Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {risks.map((risk) => {
                 const score = getRiskScore(risk.likelihood, risk.impact);
                 const level = getRiskLevel(score);
+                const hasSuggestion = risk.aiSuggestedLikelihood !== null && risk.aiSuggestedImpact !== null;
+                const suggestedScore = hasSuggestion 
+                  ? getRiskScore(risk.aiSuggestedLikelihood!, risk.aiSuggestedImpact!) 
+                  : null;
+                const suggestedLevel = suggestedScore ? getRiskLevel(suggestedScore) : null;
+                const isEditing = editingRiskId === risk.id;
+
                 return (
                   <TableRow 
                     key={risk.id} 
                     data-testid={`row-risk-${risk.id}`}
                     className={cn(
-                      highlightedRiskId === risk.id && "bg-primary/10 animate-pulse ring-2 ring-primary/50"
+                      highlightedRiskId === risk.id && "bg-primary/10 animate-pulse ring-2 ring-primary/50",
+                      hasSuggestion && "bg-blue-50/50"
                     )}
                   >
-                    <TableCell className="font-medium">{risk.title}</TableCell>
+                    <TableCell className="font-medium">
+                      <div>
+                        {risk.title}
+                        {hasSuggestion && risk.aiRationale && (
+                          <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+                            {risk.aiRationale}
+                          </p>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <Badge variant="outline" className="capitalize">
                         {risk.category}
@@ -762,6 +866,56 @@ function RisksTab({ projectId, risks, highlightedRiskId }: { projectId: string; 
                     <TableCell className="font-mono text-sm">
                       {risk.likelihood} × {risk.impact} = {score}
                     </TableCell>
+                    {hasAnySuggestion && (
+                      <TableCell>
+                        {hasSuggestion ? (
+                          isEditing ? (
+                            <div className="flex items-center gap-2">
+                              <Select
+                                value={editLikelihood.toString()}
+                                onValueChange={(v) => setEditLikelihood(parseInt(v))}
+                              >
+                                <SelectTrigger className="w-14 h-8">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {[1,2,3,4,5].map(n => (
+                                    <SelectItem key={n} value={n.toString()}>{n}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <span>×</span>
+                              <Select
+                                value={editImpact.toString()}
+                                onValueChange={(v) => setEditImpact(parseInt(v))}
+                              >
+                                <SelectTrigger className="w-14 h-8">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {[1,2,3,4,5].map(n => (
+                                    <SelectItem key={n} value={n.toString()}>{n}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-sm text-blue-600">
+                                {risk.aiSuggestedLikelihood} × {risk.aiSuggestedImpact} = {suggestedScore}
+                              </span>
+                              {suggestedLevel && (
+                                <Badge className={cn("text-xs", suggestedLevel.color)}>
+                                  {suggestedLevel.label}
+                                </Badge>
+                              )}
+                            </div>
+                          )
+                        ) : (
+                          <span className="text-muted-foreground text-sm">—</span>
+                        )}
+                      </TableCell>
+                    )}
                     <TableCell>
                       <Badge className={level.color}>{level.label}</Badge>
                     </TableCell>
@@ -771,6 +925,64 @@ function RisksTab({ projectId, risks, highlightedRiskId }: { projectId: string; 
                         {risk.status}
                       </Badge>
                     </TableCell>
+                    {hasAnySuggestion && (
+                      <TableCell>
+                        {hasSuggestion && (
+                          isEditing ? (
+                            <div className="flex items-center gap-1">
+                              <Button
+                                size="sm"
+                                variant="default"
+                                onClick={handleSaveEdit}
+                                data-testid={`button-save-score-${risk.id}`}
+                              >
+                                <Check className="w-3 h-3 mr-1" />
+                                Save
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setEditingRiskId(null)}
+                                data-testid={`button-cancel-edit-${risk.id}`}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                onClick={() => handleAccept(risk.id)}
+                                data-testid={`button-accept-score-${risk.id}`}
+                              >
+                                <Check className="w-3 h-3 mr-1" />
+                                Accept
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleStartEdit(risk)}
+                                data-testid={`button-edit-score-${risk.id}`}
+                              >
+                                <Pencil className="w-3 h-3 mr-1" />
+                                Edit
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                onClick={() => handleReject(risk.id)}
+                                data-testid={`button-reject-score-${risk.id}`}
+                              >
+                                Reject
+                              </Button>
+                            </div>
+                          )
+                        )}
+                      </TableCell>
+                    )}
                   </TableRow>
                 );
               })}
