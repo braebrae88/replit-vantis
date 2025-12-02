@@ -108,12 +108,32 @@ function formatDate(date: Date | string | null | undefined): string {
   }
 }
 
+function VantisIcon({ className }: { className?: string }) {
+  return (
+    <svg 
+      viewBox="0 0 48 48" 
+      fill="none" 
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+    >
+      <circle cx="24" cy="24" r="21" stroke="currentColor" strokeWidth="2.5" fill="none" />
+      <path 
+        d="M24 10L37 34H11L24 10Z" 
+        stroke="currentColor" 
+        strokeWidth="2.5" 
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </svg>
+  );
+}
+
 function WelcomeScreen() {
   return (
     <div className="flex flex-col items-center justify-center h-[calc(100vh-3.5rem)] p-8">
       <div className="text-center max-w-md">
         <div className="w-16 h-16 bg-muted rounded-xl flex items-center justify-center mx-auto mb-6">
-          <Target className="w-8 h-8 text-muted-foreground" />
+          <VantisIcon className="w-8 h-8 text-muted-foreground" />
         </div>
         <h2 className="text-2xl font-bold mb-2">Welcome to VANTIS Mission Control</h2>
         <p className="text-muted-foreground mb-6">
