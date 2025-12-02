@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
-import { api } from "@/lib/api";
-import type { Task, UseCase, Risk, Project, Event, NextAction, CompanionResponse, SuggestedTask, StatusReport, RoadmapResponse, RoadmapTask, RoadmapWeek, EngagementInsight, OpportunitySeed, Stakeholder } from "@shared/schema";
+import { api, ImpactStoryResponse } from "@/lib/api";
+import type { Task, UseCase, Risk, Project, Event, NextAction, CompanionResponse, SuggestedTask, StatusReport, RoadmapResponse, RoadmapTask, RoadmapWeek, EngagementInsight, OpportunitySeed, Stakeholder, MetricSnapshot } from "@shared/schema";
 import { useState } from "react";
 import MissionControlLayout from "@/components/MissionControlLayout";
 import { CreateProjectDialog } from "@/components/CreateProjectDialog";
@@ -72,6 +72,9 @@ import {
   Sparkles,
   TrendingUp,
   Map,
+  BarChart3,
+  Plus,
+  Trash2,
 } from "lucide-react";
 
 function formatDate(date: Date | string | null | undefined): string {
@@ -894,6 +897,321 @@ function StakeholdersTab({ projectId }: { projectId: string }) {
                   <Sparkles className="w-4 h-4 mr-2" />
                   Run Analysis
                 </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function ValueImpactTab({ projectId }: { projectId: string }) {
+  const [showAddMetric, setShowAddMetric] = useState(false);
+  const [newMetric, setNewMetric] = useState({
+    name: "",
+    description: "",
+    unit: "",
+    baseline: "",
+    currentValue: "",
+    targetValue: "",
+  });
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [impactStory, setImpactStory] = useState<ImpactStoryResponse | null>(null);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: metrics = [], isLoading } = useQuery({
+    queryKey: ["metrics", projectId],
+    queryFn: () => api.metrics.list(projectId),
+    staleTime: Infinity,
+  });
+
+  const createMetricMutation = useMutation({
+    mutationFn: (data: { name: string; description?: string; unit?: string; baseline?: number; currentValue?: number; targetValue?: number }) =>
+      api.metrics.create(projectId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["metrics", projectId] });
+      setShowAddMetric(false);
+      setNewMetric({ name: "", description: "", unit: "", baseline: "", currentValue: "", targetValue: "" });
+      toast({ title: "Metric Added", description: "New metric snapshot created successfully." });
+    },
+    onError: (error) => {
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to create metric", variant: "destructive" });
+    },
+  });
+
+  const deleteMetricMutation = useMutation({
+    mutationFn: (id: string) => api.metrics.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["metrics", projectId] });
+      toast({ title: "Metric Deleted", description: "Metric snapshot removed." });
+    },
+    onError: (error) => {
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to delete metric", variant: "destructive" });
+    },
+  });
+
+  const handleAddMetric = () => {
+    if (!newMetric.name.trim()) return;
+    createMetricMutation.mutate({
+      name: newMetric.name.trim(),
+      description: newMetric.description.trim() || undefined,
+      unit: newMetric.unit.trim() || undefined,
+      baseline: newMetric.baseline ? parseFloat(newMetric.baseline) : undefined,
+      currentValue: newMetric.currentValue ? parseFloat(newMetric.currentValue) : undefined,
+      targetValue: newMetric.targetValue ? parseFloat(newMetric.targetValue) : undefined,
+    });
+  };
+
+  const handleGenerateImpactStory = async () => {
+    setIsGenerating(true);
+    try {
+      const result = await api.impactStory.generate(projectId);
+      setImpactStory(result);
+      toast({ title: "Impact Story Generated", description: "Your impact narrative is ready!" });
+    } catch (error) {
+      toast({
+        title: "Generation Failed",
+        description: error instanceof Error ? error.message : "Failed to generate impact story",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+          <BarChart3 className="w-5 h-5 text-muted-foreground" />
+          Value Scorecard ({metrics.length} metrics)
+        </h3>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowAddMetric(true)}
+          data-testid="button-add-metric"
+        >
+          <Plus className="w-4 h-4 mr-1" />
+          Add Metric
+        </Button>
+      </div>
+
+      {metrics.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            No metrics captured yet. Add metrics to track project value and impact.
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Metric</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead className="text-right">Baseline</TableHead>
+                <TableHead className="text-right">Current</TableHead>
+                <TableHead className="text-right">Target</TableHead>
+                <TableHead className="text-right">Unit</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {metrics.map((metric) => (
+                <TableRow key={metric.id} data-testid={`row-metric-${metric.id}`}>
+                  <TableCell className="font-medium">{metric.name}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{metric.description || "—"}</TableCell>
+                  <TableCell className="text-right font-mono">
+                    {metric.baseline !== null ? metric.baseline : "—"}
+                  </TableCell>
+                  <TableCell className="text-right font-mono">
+                    {metric.currentValue !== null ? metric.currentValue : "—"}
+                  </TableCell>
+                  <TableCell className="text-right font-mono">
+                    {metric.targetValue !== null ? metric.targetValue : "—"}
+                  </TableCell>
+                  <TableCell className="text-right text-sm text-muted-foreground">
+                    {metric.unit || "—"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteMetricMutation.mutate(metric.id)}
+                      disabled={deleteMetricMutation.isPending}
+                      data-testid={`button-delete-metric-${metric.id}`}
+                    >
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+
+      <div className="border-t pt-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-purple-500" />
+            Impact Story
+          </h3>
+          <Button
+            onClick={handleGenerateImpactStory}
+            disabled={isGenerating}
+            data-testid="button-generate-impact-story"
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4 mr-2" />
+                Generate Impact Story
+              </>
+            )}
+          </Button>
+        </div>
+
+        {impactStory ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Executive Narrative</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="prose prose-sm max-w-none">
+                {impactStory.narrative.split('\n\n').map((paragraph, idx) => (
+                  <p key={idx} className="mb-4 text-muted-foreground">{paragraph}</p>
+                ))}
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="font-semibold text-sm">Key Soundbites</h4>
+                <ul className="space-y-2">
+                  {impactStory.soundbites.map((soundbite, idx) => (
+                    <li key={idx} className="flex items-start gap-2 text-sm">
+                      <span className="text-purple-500 mt-0.5">•</span>
+                      <span className="italic text-muted-foreground">"{soundbite}"</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="pt-4 border-t">
+                <h4 className="font-semibold text-sm mb-2">What This Unlocks</h4>
+                <p className="text-sm text-muted-foreground">{impactStory.nextUnlockSuggestion}</p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent className="py-8 text-center text-muted-foreground">
+              Click "Generate Impact Story" to create an executive-ready narrative based on your metrics and deliverables.
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      <Dialog open={showAddMetric} onOpenChange={setShowAddMetric}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Add Metric Snapshot</DialogTitle>
+            <DialogDescription>
+              Track a key performance indicator or outcome metric for this project.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Metric Name *</label>
+              <Input
+                placeholder="e.g., ED Length of Stay"
+                value={newMetric.name}
+                onChange={(e) => setNewMetric({ ...newMetric, name: e.target.value })}
+                data-testid="input-metric-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Description</label>
+              <Input
+                placeholder="e.g., Average time from arrival to discharge"
+                value={newMetric.description}
+                onChange={(e) => setNewMetric({ ...newMetric, description: e.target.value })}
+                data-testid="input-metric-description"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Unit</label>
+              <Input
+                placeholder="e.g., hours, %, minutes"
+                value={newMetric.unit}
+                onChange={(e) => setNewMetric({ ...newMetric, unit: e.target.value })}
+                data-testid="input-metric-unit"
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Baseline</label>
+                <Input
+                  type="number"
+                  placeholder="e.g., 4.5"
+                  value={newMetric.baseline}
+                  onChange={(e) => setNewMetric({ ...newMetric, baseline: e.target.value })}
+                  data-testid="input-metric-baseline"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Current</label>
+                <Input
+                  type="number"
+                  placeholder="e.g., 3.8"
+                  value={newMetric.currentValue}
+                  onChange={(e) => setNewMetric({ ...newMetric, currentValue: e.target.value })}
+                  data-testid="input-metric-current"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Target</label>
+                <Input
+                  type="number"
+                  placeholder="e.g., 3.0"
+                  value={newMetric.targetValue}
+                  onChange={(e) => setNewMetric({ ...newMetric, targetValue: e.target.value })}
+                  data-testid="input-metric-target"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddMetric(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddMetric}
+              disabled={!newMetric.name.trim() || createMetricMutation.isPending}
+              data-testid="button-save-metric"
+            >
+              {createMetricMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Add Metric"
               )}
             </Button>
           </DialogFooter>
@@ -2860,6 +3178,10 @@ export default function MissionControl() {
               <Lightbulb className="w-4 h-4 mr-2" />
               Insights
             </TabsTrigger>
+            <TabsTrigger value="value-impact" data-testid="tab-value-impact">
+              <BarChart3 className="w-4 h-4 mr-2" />
+              Value & Impact
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="summary">
@@ -2904,6 +3226,10 @@ export default function MissionControl() {
 
           <TabsContent value="insights">
             <InsightsTab projectId={project.id} />
+          </TabsContent>
+
+          <TabsContent value="value-impact">
+            <ValueImpactTab projectId={project.id} />
           </TabsContent>
         </Tabs>
       </div>

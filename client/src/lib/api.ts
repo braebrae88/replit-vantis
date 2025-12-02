@@ -28,7 +28,15 @@ import type {
   InsertEngagementInsight,
   OpportunitySeed,
   InsertOpportunitySeed,
+  MetricSnapshot,
+  InsertMetricSnapshot,
 } from "@shared/schema";
+
+export interface ImpactStoryResponse {
+  narrative: string;
+  soundbites: string[];
+  nextUnlockSuggestion: string;
+}
 
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -566,6 +574,49 @@ export const api = {
       if (!response.ok) {
         throw new Error("Failed to delete opportunity seed");
       }
+    },
+  },
+
+  // Metric Snapshots (Value Scorecard)
+  metrics: {
+    list: async (projectId: string): Promise<MetricSnapshot[]> => {
+      const response = await fetch(`/api/projects/${projectId}/metrics`);
+      return handleResponse(response);
+    },
+    create: async (projectId: string, data: Omit<InsertMetricSnapshot, 'projectId'>): Promise<MetricSnapshot> => {
+      const response = await fetch(`/api/projects/${projectId}/metrics`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      return handleResponse(response);
+    },
+    update: async (id: string, data: Partial<InsertMetricSnapshot>): Promise<MetricSnapshot> => {
+      const response = await fetch(`/api/metrics/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      return handleResponse(response);
+    },
+    delete: async (id: string): Promise<void> => {
+      const response = await fetch(`/api/metrics/${id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to delete metric snapshot");
+      }
+    },
+  },
+
+  // Impact Story
+  impactStory: {
+    generate: async (projectId: string): Promise<ImpactStoryResponse> => {
+      const response = await fetch(`/api/ai/projects/${projectId}/impact-story`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      return handleResponse(response);
     },
   },
 };
