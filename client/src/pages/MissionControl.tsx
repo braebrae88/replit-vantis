@@ -115,7 +115,7 @@ function WelcomeScreen() {
         <div className="w-16 h-16 bg-muted rounded-xl flex items-center justify-center mx-auto mb-6">
           <Target className="w-8 h-8 text-muted-foreground" />
         </div>
-        <h2 className="text-2xl font-bold mb-2">Welcome to Mission Control</h2>
+        <h2 className="text-2xl font-bold mb-2">Welcome to VANTIS Mission Control</h2>
         <p className="text-muted-foreground mb-6">
           Select a project from the sidebar to view its details, or create a new project to get started.
         </p>
