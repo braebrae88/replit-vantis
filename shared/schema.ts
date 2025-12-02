@@ -133,6 +133,8 @@ export const deliverables = pgTable("deliverables", {
   description: text("description").notNull(),
   status: deliverableStatusEnum("status").notNull().default("not_started"),
   progress: real("progress").notNull().default(0),
+  totalHours: real("total_hours"),
+  hoursRemaining: real("hours_remaining"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
