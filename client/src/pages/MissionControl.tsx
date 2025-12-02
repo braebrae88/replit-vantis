@@ -435,7 +435,7 @@ function UseCasesTab({ projectId, useCases }: { projectId: string; useCases: Use
   );
 }
 
-function TasksTab({ projectId, tasks }: { projectId: string; tasks: Task[] }) {
+function TasksTab({ projectId, tasks, highlightedTaskId }: { projectId: string; tasks: Task[]; highlightedTaskId?: string | null }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -498,7 +498,13 @@ function TasksTab({ projectId, tasks }: { projectId: string; tasks: Task[] }) {
             </TableHeader>
             <TableBody>
               {tasks.map((task) => (
-                <TableRow key={task.id} data-testid={`row-task-${task.id}`}>
+                <TableRow 
+                  key={task.id} 
+                  data-testid={`row-task-${task.id}`}
+                  className={cn(
+                    highlightedTaskId === task.id && "bg-primary/10 animate-pulse ring-2 ring-primary/50"
+                  )}
+                >
                   <TableCell className="font-medium">{task.title}</TableCell>
                   <TableCell>
                     {task.owner ? (
@@ -542,7 +548,7 @@ function TasksTab({ projectId, tasks }: { projectId: string; tasks: Task[] }) {
   );
 }
 
-function RisksTab({ projectId, risks }: { projectId: string; risks: Risk[] }) {
+function RisksTab({ projectId, risks, highlightedRiskId }: { projectId: string; risks: Risk[]; highlightedRiskId?: string | null }) {
   const getRiskScore = (likelihood: number, impact: number) => likelihood * impact;
 
   const getRiskLevel = (score: number) => {
@@ -594,7 +600,13 @@ function RisksTab({ projectId, risks }: { projectId: string; risks: Risk[] }) {
                 const score = getRiskScore(risk.likelihood, risk.impact);
                 const level = getRiskLevel(score);
                 return (
-                  <TableRow key={risk.id} data-testid={`row-risk-${risk.id}`}>
+                  <TableRow 
+                    key={risk.id} 
+                    data-testid={`row-risk-${risk.id}`}
+                    className={cn(
+                      highlightedRiskId === risk.id && "bg-primary/10 animate-pulse ring-2 ring-primary/50"
+                    )}
+                  >
                     <TableCell className="font-medium">{risk.title}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className="capitalize">
@@ -1555,7 +1567,14 @@ function AccountGrowthTab({ projectId }: { projectId: string }) {
   );
 }
 
-function NextActionsPanel({ projectId }: { projectId: string }) {
+interface NextActionsPanelProps {
+  projectId: string;
+  onNavigateToTask?: (taskId: string) => void;
+  onNavigateToActivity?: (activityId: string, action: NextAction) => void;
+  onNavigateToWorkshop?: (workshopId: string, action: NextAction) => void;
+}
+
+function NextActionsPanel({ projectId, onNavigateToTask, onNavigateToActivity, onNavigateToWorkshop }: NextActionsPanelProps) {
   const { data: actions = [], isLoading } = useQuery({
     queryKey: ["nextActions", projectId],
     queryFn: () => api.projects.getNextActions(projectId),
@@ -1565,43 +1584,127 @@ function NextActionsPanel({ projectId }: { projectId: string }) {
   const getCategoryIcon = (category: string) => {
     switch (category) {
       case "readiness":
-        return <Target className="w-4 h-4 text-muted-foreground" />;
+        return <Target className="w-4 h-4" />;
       case "tasks":
-        return <ClipboardList className="w-4 h-4 text-muted-foreground" />;
+        return <ClipboardList className="w-4 h-4" />;
       case "engagement":
-        return <MessageSquare className="w-4 h-4 text-muted-foreground" />;
+        return <MessageSquare className="w-4 h-4" />;
       case "risks":
-        return <AlertTriangle className="w-4 h-4 text-muted-foreground" />;
+        return <AlertTriangle className="w-4 h-4" />;
+      case "activities":
+        return <Activity className="w-4 h-4" />;
+      case "deliverables":
+        return <FileBarChart className="w-4 h-4" />;
+      case "stakeholders":
+        return <Users className="w-4 h-4" />;
       default:
-        return <Lightbulb className="w-4 h-4 text-muted-foreground" />;
+        return <Lightbulb className="w-4 h-4" />;
     }
   };
 
-  const getSeverityBadge = (severity: string) => {
-    switch (severity) {
-      case "critical":
-        return "bg-red-100 text-red-800 border-red-200";
-      case "high":
-        return "bg-orange-100 text-orange-800 border-orange-200";
-      case "medium":
-        return "bg-amber-100 text-amber-800 border-amber-200";
+  const getUrgencyStyle = (urgency: string) => {
+    switch (urgency) {
+      case "NOW":
+        return { bg: "bg-red-50 border-red-200", text: "text-red-700", badge: "bg-red-100 text-red-800" };
+      case "SOON":
+        return { bg: "bg-blue-50 border-blue-200", text: "text-blue-700", badge: "bg-blue-100 text-blue-800" };
+      case "LATER":
+        return { bg: "bg-slate-50 border-slate-200", text: "text-slate-600", badge: "bg-slate-100 text-slate-700" };
       default:
-        return "bg-blue-100 text-blue-800 border-blue-200";
+        return { bg: "bg-card border", text: "text-foreground", badge: "bg-muted text-muted-foreground" };
     }
   };
 
-  const getSuggestedDueDate = (severity: string) => {
-    const today = new Date();
-    switch (severity) {
-      case "critical":
-        return format(new Date(today.getTime() + 1 * 24 * 60 * 60 * 1000), "MMM d");
-      case "high":
-        return format(new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000), "MMM d");
-      case "medium":
-        return format(new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000), "MMM d");
-      default:
-        return format(new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000), "MMM d");
+  const formatDueDate = (dateStr: string | null) => {
+    if (!dateStr) return null;
+    try {
+      return format(new Date(dateStr), "MMM d");
+    } catch {
+      return null;
     }
+  };
+
+  const handleDoThisNow = (action: NextAction) => {
+    if (action.linkedType === "TASK" && action.linkedId && onNavigateToTask) {
+      onNavigateToTask(action.linkedId);
+    } else if (action.linkedType === "ACTIVITY" && action.linkedId && onNavigateToActivity) {
+      onNavigateToActivity(action.linkedId, action);
+    } else if (action.linkedType === "WORKSHOP" && action.linkedId && onNavigateToWorkshop) {
+      onNavigateToWorkshop(action.linkedId, action);
+    } else if (action.linkedType === "RISK" && action.linkedId && onNavigateToTask) {
+      onNavigateToTask(action.linkedId);
+    }
+  };
+
+  const nowActions = actions.filter(a => a.urgency === "NOW");
+  const soonActions = actions.filter(a => a.urgency === "SOON");
+  const laterActions = actions.filter(a => a.urgency === "LATER");
+
+  const renderActionCard = (action: NextAction, index: number) => {
+    const style = getUrgencyStyle(action.urgency);
+    const dueDate = formatDueDate(action.suggestedDueDate);
+
+    return (
+      <Card
+        key={action.id || index}
+        className={cn("border shadow-sm transition-colors hover:shadow-md", style.bg)}
+        data-testid={`next-action-${action.id || index}`}
+      >
+        <CardContent className="p-3">
+          <div className="flex items-start gap-2">
+            <div className={cn("mt-0.5 p-1.5 rounded-md", style.badge)}>
+              {getCategoryIcon(action.category)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4 className={cn("font-medium text-sm leading-tight mb-1", style.text)}>
+                {action.title}
+              </h4>
+              <p className="text-xs text-muted-foreground mb-2 line-clamp-2">
+                {action.description}
+              </p>
+              <div className="flex items-center justify-between gap-2">
+                {dueDate && (
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Calendar className="w-3 h-3" />
+                    <span>{dueDate}</span>
+                  </div>
+                )}
+                <Button 
+                  variant="default"
+                  size="sm" 
+                  className="h-6 text-xs px-2 ml-auto"
+                  onClick={() => handleDoThisNow(action)}
+                  data-testid={`button-do-now-${action.id || index}`}
+                >
+                  Do this now
+                </Button>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const renderUrgencySection = (title: string, urgency: string, sectionActions: NextAction[]) => {
+    if (sectionActions.length === 0) return null;
+    const style = getUrgencyStyle(urgency);
+
+    return (
+      <div className="space-y-2" data-testid={`urgency-section-${urgency.toLowerCase()}`}>
+        <div className="flex items-center gap-2 px-1">
+          <Badge className={cn("text-xs font-semibold", style.badge)}>
+            {title}
+          </Badge>
+          <span className="text-xs text-muted-foreground">
+            {sectionActions.length} action{sectionActions.length !== 1 ? "s" : ""}
+          </span>
+        </div>
+        <div className="space-y-2">
+          {sectionActions.map((action, index) => renderActionCard(action, index))}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -1616,14 +1719,15 @@ function NextActionsPanel({ projectId }: { projectId: string }) {
             </Badge>
           )}
         </div>
-        <CardDescription className="text-xs">Suggested actions based on project status</CardDescription>
+        <CardDescription className="text-xs">Your mission control Bible</CardDescription>
       </CardHeader>
-      <CardContent className="pt-4">
+      <CardContent className="pt-4 px-3">
         <ScrollArea className="h-[calc(100vh-280px)]">
           {isLoading ? (
             <div className="space-y-3">
-              <Skeleton className="h-24 w-full" />
-              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-20 w-full" />
             </div>
           ) : actions.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -1632,53 +1736,10 @@ function NextActionsPanel({ projectId }: { projectId: string }) {
               <p className="text-xs text-muted-foreground mt-1">No suggested actions at this time.</p>
             </div>
           ) : (
-            <div className="space-y-3 pr-2">
-              {actions.map((action, index) => (
-                <Card
-                  key={index}
-                  className="bg-card border shadow-sm"
-                  data-testid={`next-action-${index}`}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="mt-0.5 p-1.5 rounded-md bg-muted">
-                        {getCategoryIcon(action.category)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2 mb-2">
-                          <h4 className="font-medium text-sm text-foreground leading-tight">
-                            {action.title}
-                          </h4>
-                          <Badge 
-                            variant="outline" 
-                            className={cn("text-xs capitalize shrink-0", getSeverityBadge(action.severity))}
-                            data-testid={`severity-${action.severity}`}
-                          >
-                            {action.severity}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
-                          {action.description}
-                        </p>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <Calendar className="w-3 h-3" />
-                            <span>Due: {getSuggestedDueDate(action.severity)}</span>
-                          </div>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-7 text-xs px-2"
-                            data-testid={`button-action-details-${index}`}
-                          >
-                            Go to details
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+            <div className="space-y-4 pr-1">
+              {renderUrgencySection("NOW", "NOW", nowActions)}
+              {renderUrgencySection("SOON", "SOON", soonActions)}
+              {renderUrgencySection("LATER", "LATER", laterActions)}
             </div>
           )}
         </ScrollArea>
@@ -3440,6 +3501,11 @@ export default function MissionControl() {
   const params = useParams();
   const projectId = params.id;
   const [selectedDeliverableId, setSelectedDeliverableId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("summary");
+  const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(null);
+  const [highlightedRiskId, setHighlightedRiskId] = useState<string | null>(null);
+  const [activityDetailOpen, setActivityDetailOpen] = useState(false);
+  const [selectedActivity, setSelectedActivity] = useState<{ id: string; action: NextAction } | null>(null);
 
   const { data: project, isLoading: projectLoading } = useQuery({
     queryKey: ["project", projectId],
@@ -3505,10 +3571,32 @@ export default function MissionControl() {
     );
   }
 
+  const handleNavigateToTask = (taskId: string) => {
+    setActiveTab("tasks");
+    setHighlightedTaskId(taskId);
+    setTimeout(() => setHighlightedTaskId(null), 3000);
+  };
+
+  const handleNavigateToRisk = (riskId: string) => {
+    setActiveTab("risks");
+    setHighlightedRiskId(riskId);
+    setTimeout(() => setHighlightedRiskId(null), 3000);
+  };
+
+  const handleNavigateToActivity = (activityId: string, action: NextAction) => {
+    setSelectedActivity({ id: activityId, action });
+    setActivityDetailOpen(true);
+  };
+
+  const handleNavigateToWorkshop = (workshopId: string, action: NextAction) => {
+    setSelectedActivity({ id: workshopId, action });
+    setActivityDetailOpen(true);
+  };
+
   return (
     <MissionControlLayout>
       <div className="h-[calc(100vh-3.5rem)] flex flex-col">
-        <Tabs defaultValue="summary" className="flex-1 flex flex-col min-h-0">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <div className="border-b bg-card px-4 shrink-0">
             <TabsList className="bg-transparent h-12 gap-1">
               <TabsTrigger value="summary" className="data-[state=active]:bg-background" data-testid="tab-summary">
@@ -3540,7 +3628,12 @@ export default function MissionControl() {
 
           <div className="flex-1 grid grid-cols-[280px_1fr_300px] gap-4 p-4 min-h-0 overflow-hidden">
             <div className="min-h-0">
-              <NextActionsPanel projectId={project.id} />
+              <NextActionsPanel 
+                projectId={project.id}
+                onNavigateToTask={handleNavigateToTask}
+                onNavigateToActivity={handleNavigateToActivity}
+                onNavigateToWorkshop={handleNavigateToWorkshop}
+              />
             </div>
 
             <div className="min-h-0 overflow-auto">
@@ -3553,11 +3646,11 @@ export default function MissionControl() {
               </TabsContent>
 
               <TabsContent value="tasks" className="mt-0 h-full">
-                <TasksTab projectId={project.id} tasks={tasks} />
+                <TasksTab projectId={project.id} tasks={tasks} highlightedTaskId={highlightedTaskId} />
               </TabsContent>
 
               <TabsContent value="risks" className="mt-0 h-full">
-                <RisksTab projectId={project.id} risks={risks} />
+                <RisksTab projectId={project.id} risks={risks} highlightedRiskId={highlightedRiskId} />
               </TabsContent>
 
               <TabsContent value="activity" className="mt-0 h-full">
@@ -3587,6 +3680,115 @@ export default function MissionControl() {
           </div>
         </Tabs>
       </div>
+
+      <Dialog open={activityDetailOpen} onOpenChange={setActivityDetailOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {selectedActivity?.action.linkedType === "WORKSHOP" ? (
+                <Video className="w-5 h-5 text-purple-600" />
+              ) : (
+                <Activity className="w-5 h-5 text-blue-600" />
+              )}
+              {selectedActivity?.action.title || "Activity Details"}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedActivity?.action.linkedType === "WORKSHOP" 
+                ? "Workshop details and preparation materials"
+                : "Guidance and next steps for this activity"
+              }
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="p-4 bg-muted/50 rounded-lg">
+              <h4 className="font-medium text-sm mb-2">Description</h4>
+              <p className="text-sm text-muted-foreground">
+                {selectedActivity?.action.description}
+              </p>
+            </div>
+
+            {selectedActivity?.action.suggestedDueDate && (
+              <div className="flex items-center gap-2 text-sm">
+                <Calendar className="w-4 h-4 text-muted-foreground" />
+                <span className="font-medium">Suggested Due:</span>
+                <span>{format(new Date(selectedActivity.action.suggestedDueDate), "MMMM d, yyyy")}</span>
+              </div>
+            )}
+
+            <div className="p-4 border rounded-lg space-y-3">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <Lightbulb className="w-4 h-4 text-amber-500" />
+                Recommended Approach
+              </h4>
+              {selectedActivity?.action.linkedType === "WORKSHOP" ? (
+                <div className="space-y-3 text-sm text-muted-foreground">
+                  <p><strong>1. Preparation:</strong> Send calendar invite 3-5 days in advance with clear agenda and objectives.</p>
+                  <p><strong>2. Agenda:</strong> Introductions (5 min), Current state review (15 min), Pain points discussion (20 min), Solution exploration (15 min), Next steps (5 min).</p>
+                  <p><strong>3. Follow-up:</strong> Send summary notes within 24 hours with action items and owners.</p>
+                </div>
+              ) : (
+                <div className="space-y-3 text-sm text-muted-foreground">
+                  <p><strong>1. Review context:</strong> Check related tasks, risks, and recent engagement insights.</p>
+                  <p><strong>2. Engage stakeholders:</strong> Reach out to relevant stakeholders for input or sign-off.</p>
+                  <p><strong>3. Document progress:</strong> Update the activity status and add any notes or deliverables.</p>
+                </div>
+              )}
+            </div>
+
+            {selectedActivity?.action.linkedType === "WORKSHOP" && (
+              <div className="p-4 border rounded-lg space-y-3">
+                <h4 className="font-medium text-sm flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-blue-500" />
+                  Email Template
+                </h4>
+                <div className="bg-muted/30 p-3 rounded text-sm font-mono text-xs whitespace-pre-wrap">
+{`Subject: ${selectedActivity?.action.title} - Meeting Invite
+
+Hi Team,
+
+I'd like to schedule a ${selectedActivity?.action.title?.toLowerCase().includes('kickoff') ? 'kickoff' : 'working'} session to discuss our project goals and next steps.
+
+Proposed Agenda:
+• Introductions and context setting
+• Current state overview
+• Key objectives and success criteria
+• Discussion and Q&A
+• Next steps and action items
+
+Please let me know your availability for the coming week.
+
+Best regards`}
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="gap-2"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`Subject: ${selectedActivity?.action.title} - Meeting Invite\n\nHi Team,\n\nI'd like to schedule a session to discuss our project goals and next steps.\n\nProposed Agenda:\n• Introductions and context setting\n• Current state overview\n• Key objectives and success criteria\n• Discussion and Q&A\n• Next steps and action items\n\nPlease let me know your availability for the coming week.\n\nBest regards`);
+                  }}
+                  data-testid="button-copy-email"
+                >
+                  <Copy className="w-3 h-3" />
+                  Copy to clipboard
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setActivityDetailOpen(false)}>
+              Close
+            </Button>
+            <Button onClick={() => {
+              setActivityDetailOpen(false);
+              setActiveTab("deliverables");
+            }}>
+              Go to Deliverables
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </MissionControlLayout>
   );
 }
