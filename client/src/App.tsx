@@ -10,6 +10,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={MissionControl} />
+      <Route path="/mission-control" component={MissionControl} />
       <Route path="/project/:id" component={MissionControl} />
       <Route path="/timesheet" component={Timesheet} />
       <Route component={NotFound} />
