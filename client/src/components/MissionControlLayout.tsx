@@ -25,14 +25,16 @@ export default function MissionControlLayout({ children }: { children: React.Rea
           </SheetContent>
         </Sheet>
 
-        <div className="flex items-center gap-3">
-          <img 
-            src={forgeVantisLogo} 
-            alt="Forge Vantis" 
-            className="h-8 w-auto"
-          />
-          <p className="text-[10px] text-white font-mono tracking-wider uppercase">Mission Control</p>
-        </div>
+        <Link href="/">
+          <div className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity" data-testid="link-home">
+            <img 
+              src={forgeVantisLogo} 
+              alt="Forge Vantis" 
+              className="h-8 w-auto"
+            />
+            <p className="text-[10px] text-white font-mono tracking-wider uppercase">Mission Control</p>
+          </div>
+        </Link>
 
         <div className="ml-auto flex items-center gap-2">
           <Link href="/proposals">
