@@ -28,6 +28,7 @@ import {
   type RoadmapTask,
 } from "@shared/schema";
 import { fromError } from "zod-validation-error";
+import { instantiateDeliverableFromTemplate, DELIVERABLE_TEMPLATES, type DeliverableTemplate } from "./deliverableTemplates";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -1181,6 +1182,21 @@ export async function registerRoutes(
 
   // ============= DELIVERABLES =============
 
+  app.get("/api/deliverable-templates", async (_req, res) => {
+    try {
+      const templates = DELIVERABLE_TEMPLATES.map(t => ({
+        type: t.type,
+        name: t.name,
+        description: t.description,
+        milestoneCount: t.milestones.length,
+        activityCount: t.milestones.reduce((sum, m) => sum + m.activities.length, 0),
+      }));
+      res.json(templates);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch deliverable templates" });
+    }
+  });
+
   app.get("/api/projects/:id/deliverables", async (req, res) => {
     try {
       const project = await storage.getProject(req.params.id);
@@ -1200,6 +1216,19 @@ export async function registerRoutes(
       if (!project) {
         return res.status(404).json({ error: "Project not found" });
       }
+
+      const { type } = req.body;
+      
+      if (type && DELIVERABLE_TEMPLATES.some(t => t.type === type)) {
+        const result = await instantiateDeliverableFromTemplate(req.params.id, type as DeliverableTemplate["type"]);
+        const deliverable = await storage.getDeliverable(result.deliverableId);
+        return res.status(201).json({
+          deliverable,
+          milestonesCreated: result.milestonesCreated,
+          activitiesCreated: result.activitiesCreated,
+        });
+      }
+
       const result = insertDeliverableSchema.safeParse({
         ...req.body,
         projectId: req.params.id,
@@ -1210,6 +1239,7 @@ export async function registerRoutes(
       const deliverable = await storage.createDeliverable(result.data);
       res.status(201).json(deliverable);
     } catch (error) {
+      console.error("Failed to create deliverable:", error);
       res.status(500).json({ error: "Failed to create deliverable" });
     }
   });

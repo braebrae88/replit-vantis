@@ -1,5 +1,5 @@
-import { storage } from "./storage";
-import type { InsertDeliverable, InsertMilestone, InsertActivity } from "@shared/schema";
+import { db } from "./db";
+import { deliverables, milestones, activities, type InsertDeliverable, type InsertMilestone, type InsertActivity } from "@shared/schema";
 
 export type DeliverableTemplate = {
   type: "activation_map" | "safe_prototypes" | "ms_funding_nav" | "exec_framing";
@@ -653,56 +653,58 @@ export async function instantiateDeliverableFromTemplate(
     throw new Error(`Unknown template type: ${templateType}`);
   }
 
-  const deliverableData: InsertDeliverable = {
-    projectId,
-    type: template.type,
-    name: template.name,
-    description: template.description,
-    status: "not_started",
-    progress: 0,
-  };
-
-  const deliverable = await storage.createDeliverable(deliverableData);
-
-  let milestonesCreated = 0;
-  let activitiesCreated = 0;
-
-  for (let mIndex = 0; mIndex < template.milestones.length; mIndex++) {
-    const milestoneTemplate = template.milestones[mIndex];
-
-    const milestoneData: InsertMilestone = {
-      deliverableId: deliverable.id,
-      name: milestoneTemplate.name,
-      description: milestoneTemplate.description,
+  return await db.transaction(async (tx) => {
+    const deliverableData: InsertDeliverable = {
+      projectId,
+      type: template.type,
+      name: template.name,
+      description: template.description,
       status: "not_started",
-      orderIndex: mIndex,
-      expectedHours: milestoneTemplate.expectedHours ?? null,
+      progress: 0,
     };
 
-    const milestone = await storage.createMilestone(milestoneData);
-    milestonesCreated++;
+    const [deliverable] = await tx.insert(deliverables).values(deliverableData).returning();
 
-    for (let aIndex = 0; aIndex < milestoneTemplate.activities.length; aIndex++) {
-      const activityTemplate = milestoneTemplate.activities[aIndex];
+    let milestonesCreated = 0;
+    let activitiesCreated = 0;
 
-      const activityData: InsertActivity = {
-        milestoneId: milestone.id,
-        name: activityTemplate.name,
-        description: activityTemplate.description,
+    for (let mIndex = 0; mIndex < template.milestones.length; mIndex++) {
+      const milestoneTemplate = template.milestones[mIndex];
+
+      const milestoneData: InsertMilestone = {
+        deliverableId: deliverable.id,
+        name: milestoneTemplate.name,
+        description: milestoneTemplate.description,
         status: "not_started",
-        orderIndex: aIndex,
-        requiresInput: activityTemplate.requiresInput ?? false,
-        requiredInputs: activityTemplate.requiredInputs ?? [],
+        orderIndex: mIndex,
+        expectedHours: milestoneTemplate.expectedHours ?? null,
       };
 
-      await storage.createActivity(activityData);
-      activitiesCreated++;
-    }
-  }
+      const [milestone] = await tx.insert(milestones).values(milestoneData).returning();
+      milestonesCreated++;
 
-  return {
-    deliverableId: deliverable.id,
-    milestonesCreated,
-    activitiesCreated,
-  };
+      for (let aIndex = 0; aIndex < milestoneTemplate.activities.length; aIndex++) {
+        const activityTemplate = milestoneTemplate.activities[aIndex];
+
+        const activityData: InsertActivity = {
+          milestoneId: milestone.id,
+          name: activityTemplate.name,
+          description: activityTemplate.description,
+          status: "not_started",
+          orderIndex: aIndex,
+          requiresInput: activityTemplate.requiresInput ?? false,
+          requiredInputs: activityTemplate.requiredInputs ?? [],
+        };
+
+        await tx.insert(activities).values(activityData);
+        activitiesCreated++;
+      }
+    }
+
+    return {
+      deliverableId: deliverable.id,
+      milestonesCreated,
+      activitiesCreated,
+    };
+  });
 }
