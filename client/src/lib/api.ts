@@ -59,6 +59,18 @@ export interface AccountGrowthResponse {
   opportunitySeeds: OpportunitySeed[];
 }
 
+export interface PrepContentDocument {
+  label: string;
+  artifactId: string | null;
+  suggestedSource: string;
+}
+
+export interface PrepContent {
+  summaryToReview: string;
+  documentsToBring: PrepContentDocument[];
+  dataOrScreenshotsToPrepare: string[];
+}
+
 export interface ActivityGuidanceResponse {
   recommendedTitle: string;
   objective: string;
@@ -69,6 +81,7 @@ export interface ActivityGuidanceResponse {
   prepChecklist: string[];
   outputChecklist: string[];
   emailInviteDraft: string;
+  prepContent: PrepContent;
 }
 
 export interface SoWBootstrapResponse {

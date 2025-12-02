@@ -1520,6 +1520,18 @@ Please generate an impact story based on this information.`;
 
   // ============= ACTIVITY GUIDANCE =============
 
+  interface PrepContentDocument {
+    label: string;
+    artifactId: string | null;
+    suggestedSource: string;
+  }
+
+  interface PrepContent {
+    summaryToReview: string;
+    documentsToBring: PrepContentDocument[];
+    dataOrScreenshotsToPrepare: string[];
+  }
+
   interface ActivityGuidanceResult {
     recommendedTitle: string;
     objective: string;
@@ -1530,6 +1542,7 @@ Please generate an impact story based on this information.`;
     prepChecklist: string[];
     outputChecklist: string[];
     emailInviteDraft: string;
+    prepContent: PrepContent;
   }
 
   app.get("/api/ai/activities/:activityId/guidance", async (req, res) => {
@@ -1542,6 +1555,16 @@ Please generate an impact story based on this information.`;
       }
 
       const { activity, milestone, deliverable, project, stakeholders, recentInsights } = context;
+
+      const allEvents = await storage.getEvents(project.id);
+      const meetingEvents = allEvents
+        .filter(e => ["meeting", "email", "milestone"].includes(e.type))
+        .sort((a, b) => {
+          const dateA = a.occurredAt ? new Date(a.occurredAt).getTime() : 0;
+          const dateB = b.occurredAt ? new Date(b.occurredAt).getTime() : 0;
+          return dateB - dateA;
+        })
+        .slice(0, 5);
 
       const userPrompt = buildActivityGuidanceUserPrompt({
         activity: {
@@ -1575,13 +1598,19 @@ Please generate an impact story based on this information.`;
           sentiment: i.sentiment,
           type: i.type,
         })),
+        recentEvents: meetingEvents.map((e) => ({
+          title: e.title,
+          type: e.type,
+          description: e.description,
+          date: e.occurredAt ? new Date(e.occurredAt).toISOString().split('T')[0] : null,
+        })),
       });
 
       const llmResult = await callLLM({
         systemPrompt: ACTIVITY_GUIDANCE_SYSTEM_PROMPT,
         userContent: userPrompt,
         temperature: 0.5,
-        maxTokens: 2000,
+        maxTokens: 2500,
         jsonMode: true,
       });
 
@@ -1594,7 +1623,16 @@ Please generate an impact story based on this information.`;
         return res.status(500).json({ error: parseResult.error });
       }
 
-      res.json(parseResult.data);
+      const result = parseResult.data;
+      if (!result.prepContent) {
+        result.prepContent = {
+          summaryToReview: "",
+          documentsToBring: [],
+          dataOrScreenshotsToPrepare: [],
+        };
+      }
+
+      res.json(result);
     } catch (error) {
       console.error("Failed to generate activity guidance:", error);
       res.status(500).json({ error: "Failed to generate activity guidance" });
@@ -1661,9 +1699,9 @@ Please generate an impact story based on this information.`;
         const useCase = await storage.createUseCase({
           projectId,
           name: uc.name,
-          description: uc.description,
-          priority: priorityMap[uc.priority] || "medium",
-          status: "identified",
+          problemStatement: uc.description,
+          valueHypothesis: uc.potentialImpact || null,
+          status: "draft",
         });
         createdUseCases.push(useCase);
       }
@@ -1671,8 +1709,11 @@ Please generate an impact story based on this information.`;
       for (const deliverableType of analysis.deliverableTypes) {
         try {
           const result = await instantiateDeliverableFromTemplate(projectId, deliverableType);
-          if (result.deliverable) {
-            createdDeliverables.push(result.deliverable);
+          if (result.deliverableId) {
+            const deliverable = await storage.getDeliverable(result.deliverableId);
+            if (deliverable) {
+              createdDeliverables.push(deliverable);
+            }
           }
         } catch (err) {
           console.warn(`Failed to instantiate deliverable ${deliverableType}:`, err);
@@ -1703,11 +1744,13 @@ Please generate an impact story based on this information.`;
           medium: "medium",
           low: "low",
         };
+        const roleWithOrg = stakeholder.organization 
+          ? `${stakeholder.role || 'Unknown'} at ${stakeholder.organization}` 
+          : stakeholder.role || undefined;
         const createdStakeholder = await storage.createStakeholder({
           projectId,
           name: stakeholder.name,
-          role: stakeholder.role || undefined,
-          organization: stakeholder.organization || undefined,
+          role: roleWithOrg,
           influence: influenceMap[stakeholder.influence] || "medium",
           supportLevel: "neutral",
         });
@@ -1727,10 +1770,10 @@ Please generate an impact story based on this information.`;
       });
 
       for (const insight of analysis.insights) {
-        const typeMap: Record<string, "meeting_summary" | "decision" | "open_question" | "sentiment_shift" | "relationship_update" | "milestone_reached"> = {
+        const typeMap: Record<string, "meeting_summary" | "decision" | "open_question" | "risk" | "opportunity_hint" | "stakeholder_update"> = {
           constraint: "decision",
-          opportunity: "sentiment_shift",
-          risk: "open_question",
+          opportunity: "opportunity_hint",
+          risk: "risk",
           context: "meeting_summary",
         };
         const importanceMap: Record<string, "low" | "medium" | "high"> = {
@@ -1754,10 +1797,17 @@ Please generate an impact story based on this information.`;
         createdInsights.push(...created);
       }
 
-      if (analysis.suggestedPhase && analysis.suggestedPhase !== project.phase) {
-        await storage.updateProject(projectId, {
-          phase: analysis.suggestedPhase.toLowerCase() as "discovery" | "design" | "development" | "deployment",
-        });
+      if (analysis.suggestedPhase) {
+        const phaseToProjectPhase: Record<string, "discovery" | "design" | "development" | "deployment" | "maintenance"> = {
+          DISCOVER: "discovery",
+          MAP: "design",
+          PROTOTYPE: "development",
+          UNLOCK: "deployment",
+        };
+        const newPhase = phaseToProjectPhase[analysis.suggestedPhase];
+        if (newPhase && newPhase !== project.phase) {
+          await storage.updateProject(projectId, { phase: newPhase });
+        }
       }
 
       if (analysis.timeline.startDate || analysis.timeline.endDate) {

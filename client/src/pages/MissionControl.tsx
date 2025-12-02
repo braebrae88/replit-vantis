@@ -3883,6 +3883,55 @@ function ActivityGuidanceDrawer({ open, onOpenChange, activityId, action, projec
                   )}
                 </Button>
               </div>
+
+              {guidance.prepContent && (
+                <div className="p-4 border border-indigo-200 bg-indigo-50/50 rounded-lg">
+                  <h4 className="font-medium text-sm mb-3 flex items-center gap-2 text-indigo-900">
+                    <FileText className="w-4 h-4 text-indigo-600" />
+                    Prep Content (Based on Previous Meetings)
+                  </h4>
+                  
+                  {guidance.prepContent.summaryToReview && (
+                    <div className="mb-4">
+                      <p className="text-xs font-medium text-indigo-700 mb-1">Summary to Review</p>
+                      <p className="text-sm text-indigo-900 bg-white p-3 rounded border border-indigo-100" data-testid="text-summary-to-review">
+                        {guidance.prepContent.summaryToReview}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {guidance.prepContent.documentsToBring && guidance.prepContent.documentsToBring.length > 0 && (
+                    <div className="mb-4">
+                      <p className="text-xs font-medium text-indigo-700 mb-2">Documents to Bring</p>
+                      <ul className="space-y-2" data-testid="list-documents-to-bring">
+                        {guidance.prepContent.documentsToBring.map((doc, i) => (
+                          <li key={i} className="flex items-start gap-2 text-sm bg-white p-2 rounded border border-indigo-100">
+                            <File className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                            <div>
+                              <span className="text-indigo-900">{doc.label}</span>
+                              <span className="text-xs text-indigo-500 ml-2">({doc.suggestedSource})</span>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {guidance.prepContent.dataOrScreenshotsToPrepare && guidance.prepContent.dataOrScreenshotsToPrepare.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-indigo-700 mb-2">Data & Screenshots to Prepare</p>
+                      <ul className="space-y-1.5" data-testid="list-data-to-prepare">
+                        {guidance.prepContent.dataOrScreenshotsToPrepare.map((item, i) => (
+                          <li key={i} className="text-sm text-indigo-900 flex items-start gap-2">
+                            <span className="text-indigo-500 mt-0.5">•</span>
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ) : null}
         </ScrollArea>

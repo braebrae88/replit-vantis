@@ -14,7 +14,18 @@ You must respond with a valid JSON object in the following format:
   ],
   "prepChecklist": ["string array of items to prepare before the activity"],
   "outputChecklist": ["string array of expected deliverables/outputs after the activity"],
-  "emailInviteDraft": "string - A ready-to-send email invitation for this activity"
+  "emailInviteDraft": "string - A ready-to-send email invitation for this activity",
+  "prepContent": {
+    "summaryToReview": "string - A short paragraph summarizing what should be re-read or reviewed before this meeting based on previous meetings and insights",
+    "documentsToBring": [
+      {
+        "label": "string - Description of the document or artifact",
+        "artifactId": "string or null - ID of the artifact if known, otherwise null",
+        "suggestedSource": "string - Where to find this (e.g., 'EngagementInsights', 'Artifact', 'Deliverable', 'Event notes')"
+      }
+    ],
+    "dataOrScreenshotsToPrepare": ["string array of specific data, stats, or screenshots to prepare before the meeting"]
+  }
 }
 
 Guidelines:
@@ -24,7 +35,11 @@ Guidelines:
 - The agenda should be detailed and realistic
 - Prep checklist should include specific documents, data, or stakeholder conversations needed
 - Output checklist should include tangible deliverables that can be tracked
-- The email draft should be professional, clear, and include the agenda preview`;
+- The email draft should be professional, clear, and include the agenda preview
+- For prepContent:
+  - summaryToReview should synthesize key points from recent meetings/events that are relevant to this activity
+  - documentsToBring should reference specific insights, decisions, or deliverables mentioned in the context
+  - dataOrScreenshotsToPrepare should include specific metrics, EMR data, or prototype screenshots relevant to the activity`;
 
 export function buildActivityGuidanceUserPrompt(context: {
   activity: { name: string; description: string; status: string };
@@ -33,8 +48,9 @@ export function buildActivityGuidanceUserPrompt(context: {
   project: { name: string; clientName: string | null; phase: string };
   stakeholders: Array<{ name: string; role: string; influence: string; sentiment: string | null }>;
   recentInsights: Array<{ title: string; summary: string; sentiment: string | null; type: string }>;
+  recentEvents?: Array<{ title: string; type: string; description: string | null; date: string | null }>;
 }): string {
-  const { activity, milestone, deliverable, project, stakeholders, recentInsights } = context;
+  const { activity, milestone, deliverable, project, stakeholders, recentInsights, recentEvents } = context;
 
   let prompt = `Generate detailed playbook guidance for this activity:
 
@@ -65,14 +81,26 @@ export function buildActivityGuidanceUserPrompt(context: {
     });
   }
 
+  if (recentEvents && recentEvents.length > 0) {
+    prompt += `\n## Recent Meetings & Events (use these to inform prep content)\n`;
+    recentEvents.forEach((event) => {
+      prompt += `- [${event.type}] ${event.title}${event.date ? ` (${event.date})` : ''}${event.description ? `: ${event.description}` : ''}\n`;
+    });
+  }
+
   if (recentInsights.length > 0) {
-    prompt += `\n## Recent Engagement Insights\n`;
-    recentInsights.slice(0, 5).forEach((insight) => {
+    prompt += `\n## Recent Engagement Insights (decisions, risks, open questions)\n`;
+    recentInsights.slice(0, 8).forEach((insight) => {
       prompt += `- [${insight.type}] ${insight.title}: ${insight.summary}${insight.sentiment ? ` (${insight.sentiment})` : ''}\n`;
     });
   }
 
-  prompt += `\nGenerate a comprehensive, actionable playbook for executing this activity successfully. Consider the stakeholder dynamics and recent insights when making recommendations.`;
+  prompt += `\nGenerate a comprehensive, actionable playbook for executing this activity successfully. Consider the stakeholder dynamics, recent meetings, and insights when making recommendations.
+
+IMPORTANT: For prepContent, use the recent events and insights above to suggest:
+- What to review before this meeting (summaryToReview)
+- Specific documents or notes to bring (documentsToBring) - reference actual insights or events from above when possible
+- Data or screenshots to prepare (dataOrScreenshotsToPrepare) - be specific about metrics, EMR data, or prototypes`;
 
   return prompt;
 }
