@@ -548,3 +548,43 @@ export interface RoadmapResponse {
     end: string;
   };
 }
+
+// Deliverable Guidance Types (computed on-the-fly)
+export interface GuidanceWorkshop {
+  type: string;
+  objective: string;
+  agenda: string[];
+  suggestedDuration: string;
+  participants: string[];
+}
+
+export interface GuidanceStep {
+  activityId: string;
+  milestoneName: string;
+  activityName: string;
+  description: string;
+  missingInputs: string[];
+  suggestedTasks: string[];
+  suggestedWorkshop: GuidanceWorkshop | null;
+  riskIfIgnored: "Low" | "Medium" | "High";
+}
+
+export interface GuidanceScopeFlag {
+  type: "schedule_risk" | "dependency_risk" | "resource_risk" | "scope_creep";
+  severity: "warning" | "critical";
+  message: string;
+}
+
+export interface GuidanceResponse {
+  deliverableSummary: {
+    id: string;
+    type: string;
+    name: string;
+    status: string;
+    progress: number;
+  };
+  nextBestSteps: GuidanceStep[];
+  overallGaps: string[];
+  scopeFlags: GuidanceScopeFlag[];
+  notes: string;
+}
