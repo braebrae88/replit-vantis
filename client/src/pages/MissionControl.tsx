@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { api, ImpactStoryResponse, AccountGrowthResponse, RuleBasedSuggestion, EngagementIdea } from "@/lib/api";
 import type { Task, UseCase, Risk, Project, Event, NextAction, CompanionResponse, SuggestedTask, StatusReport, RoadmapResponse, RoadmapTask, RoadmapWeek, EngagementInsight, OpportunitySeed, Stakeholder, MetricSnapshot } from "@shared/schema";
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import MissionControlLayout from "@/components/MissionControlLayout";
 import { CreateProjectDialog } from "@/components/CreateProjectDialog";
 import { CreateUseCaseDialog } from "@/components/CreateUseCaseDialog";
@@ -1570,11 +1570,12 @@ function AccountGrowthTab({ projectId }: { projectId: string }) {
 interface NextActionsPanelProps {
   projectId: string;
   onNavigateToTask?: (taskId: string) => void;
+  onNavigateToRisk?: (riskId: string) => void;
   onNavigateToActivity?: (activityId: string, action: NextAction) => void;
   onNavigateToWorkshop?: (workshopId: string, action: NextAction) => void;
 }
 
-function NextActionsPanel({ projectId, onNavigateToTask, onNavigateToActivity, onNavigateToWorkshop }: NextActionsPanelProps) {
+function NextActionsPanel({ projectId, onNavigateToTask, onNavigateToRisk, onNavigateToActivity, onNavigateToWorkshop }: NextActionsPanelProps) {
   const { data: actions = [], isLoading } = useQuery({
     queryKey: ["nextActions", projectId],
     queryFn: () => api.projects.getNextActions(projectId),
@@ -1627,12 +1628,12 @@ function NextActionsPanel({ projectId, onNavigateToTask, onNavigateToActivity, o
   const handleDoThisNow = (action: NextAction) => {
     if (action.linkedType === "TASK" && action.linkedId && onNavigateToTask) {
       onNavigateToTask(action.linkedId);
+    } else if (action.linkedType === "RISK" && action.linkedId && onNavigateToRisk) {
+      onNavigateToRisk(action.linkedId);
     } else if (action.linkedType === "ACTIVITY" && action.linkedId && onNavigateToActivity) {
       onNavigateToActivity(action.linkedId, action);
     } else if (action.linkedType === "WORKSHOP" && action.linkedId && onNavigateToWorkshop) {
       onNavigateToWorkshop(action.linkedId, action);
-    } else if (action.linkedType === "RISK" && action.linkedId && onNavigateToTask) {
-      onNavigateToTask(action.linkedId);
     }
   };
 
@@ -3506,6 +3507,34 @@ export default function MissionControl() {
   const [highlightedRiskId, setHighlightedRiskId] = useState<string | null>(null);
   const [activityDetailOpen, setActivityDetailOpen] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<{ id: string; action: NextAction } | null>(null);
+  const taskHighlightTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const riskHighlightTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const clearTaskHighlight = useCallback(() => {
+    if (taskHighlightTimerRef.current) {
+      clearTimeout(taskHighlightTimerRef.current);
+      taskHighlightTimerRef.current = null;
+    }
+    setHighlightedTaskId(null);
+  }, []);
+
+  const clearRiskHighlight = useCallback(() => {
+    if (riskHighlightTimerRef.current) {
+      clearTimeout(riskHighlightTimerRef.current);
+      riskHighlightTimerRef.current = null;
+    }
+    setHighlightedRiskId(null);
+  }, []);
+
+  const handleTabChange = useCallback((tab: string) => {
+    if (tab !== "tasks") {
+      clearTaskHighlight();
+    }
+    if (tab !== "risks") {
+      clearRiskHighlight();
+    }
+    setActiveTab(tab);
+  }, [clearTaskHighlight, clearRiskHighlight]);
 
   const { data: project, isLoading: projectLoading } = useQuery({
     queryKey: ["project", projectId],
@@ -3572,15 +3601,17 @@ export default function MissionControl() {
   }
 
   const handleNavigateToTask = (taskId: string) => {
+    clearTaskHighlight();
     setActiveTab("tasks");
     setHighlightedTaskId(taskId);
-    setTimeout(() => setHighlightedTaskId(null), 3000);
+    taskHighlightTimerRef.current = setTimeout(() => setHighlightedTaskId(null), 3000);
   };
 
   const handleNavigateToRisk = (riskId: string) => {
+    clearRiskHighlight();
     setActiveTab("risks");
     setHighlightedRiskId(riskId);
-    setTimeout(() => setHighlightedRiskId(null), 3000);
+    riskHighlightTimerRef.current = setTimeout(() => setHighlightedRiskId(null), 3000);
   };
 
   const handleNavigateToActivity = (activityId: string, action: NextAction) => {
@@ -3596,7 +3627,7 @@ export default function MissionControl() {
   return (
     <MissionControlLayout>
       <div className="h-[calc(100vh-3.5rem)] flex flex-col">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col min-h-0">
           <div className="border-b bg-card px-4 shrink-0">
             <TabsList className="bg-transparent h-12 gap-1">
               <TabsTrigger value="summary" className="data-[state=active]:bg-background" data-testid="tab-summary">
@@ -3631,6 +3662,7 @@ export default function MissionControl() {
               <NextActionsPanel 
                 projectId={project.id}
                 onNavigateToTask={handleNavigateToTask}
+                onNavigateToRisk={handleNavigateToRisk}
                 onNavigateToActivity={handleNavigateToActivity}
                 onNavigateToWorkshop={handleNavigateToWorkshop}
               />
