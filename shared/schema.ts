@@ -16,8 +16,12 @@ export const deliverableStatusEnum = pgEnum("deliverable_status", ["not_started"
 export const milestoneStatusEnum = pgEnum("milestone_status", ["not_started", "in_progress", "blocked", "done"]);
 export const activityStatusEnum = pgEnum("activity_status", ["not_started", "in_progress", "blocked", "done"]);
 
+// Stakeholder Enums
+export const influenceLevelEnum = pgEnum("influence_level", ["low", "medium", "high"]);
+export const supportLevelEnum = pgEnum("support_level_enum", ["opposed", "neutral", "supportive", "champion"]);
+
 // Engagement Intelligence Enums
-export const insightTypeEnum = pgEnum("insight_type", ["meeting_summary", "decision", "open_question", "risk", "opportunity_hint"]);
+export const insightTypeEnum = pgEnum("insight_type", ["meeting_summary", "decision", "open_question", "risk", "opportunity_hint", "stakeholder_update"]);
 export const sentimentEnum = pgEnum("sentiment", ["positive", "neutral", "negative"]);
 export const importanceEnum = pgEnum("importance", ["low", "medium", "high"]);
 export const opportunityStatusEnum = pgEnum("opportunity_status", ["idea", "qualified", "proposed", "won", "lost"]);
@@ -110,8 +114,9 @@ export const stakeholders = pgTable("stakeholders", {
   projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   role: text("role"),
-  influence: integer("influence"),
-  supportLevel: integer("support_level"),
+  influence: influenceLevelEnum("influence"),
+  supportLevel: supportLevelEnum("support_level"),
+  lastContactAt: timestamp("last_contact_at"),
   notes: text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
