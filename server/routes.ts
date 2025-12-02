@@ -36,6 +36,8 @@ import {
   insertMetricSnapshotSchema,
   insertArtifactSchema,
   updateOpportunitySeedSchema,
+  insertProposalSchema,
+  insertSowChecklistItemSchema,
   companionRequestSchema,
   type NextAction,
   type CompanionResponse,
@@ -52,6 +54,7 @@ import {
   type GuidanceScopeFlag,
   type Activity,
   type Milestone,
+  type InsertSowChecklistItem,
 } from "@shared/schema";
 import { fromError } from "zod-validation-error";
 import { z } from "zod";
@@ -73,6 +76,7 @@ import { ACCOUNT_GROWTH_SYSTEM_PROMPT, AccountGrowthResult, RuleBasedSuggestion,
 import { TRANSCRIPT_INTAKE_SYSTEM_PROMPT, buildTranscriptIntakePrompt, TranscriptAnalysisResult } from "./ai/transcriptIntakePrompt";
 import { ACTIVITY_GUIDANCE_SYSTEM_PROMPT, buildActivityGuidanceUserPrompt } from "./ai/activityGuidancePrompt";
 import { SOW_BOOTSTRAP_SYSTEM_PROMPT, buildSoWBootstrapPrompt, SoWBootstrapResult } from "./ai/sowBootstrapPrompt";
+import { PROPOSAL_ANALYSIS_SYSTEM_PROMPT, buildProposalAnalysisUserPrompt, proposalAnalysisResultSchema, ProposalAnalysisResult } from "./ai/proposalAnalysisPrompt";
 import { callLLM, parseJSONResponse } from "./ai/client";
 import { computeNextActions } from "./nextActionsService";
 import { populateArtifactsFromInsights, populateArtifactsFromTasks, populateArtifactsFromRisks } from "./artifactPopulationService";
@@ -1109,6 +1113,184 @@ ${section.content || 'None'}`;
     } catch (error) {
       console.error("Failed to generate section draft:", error);
       res.status(500).json({ error: "Failed to generate draft" });
+    }
+  });
+
+  // ============= PROPOSALS =============
+
+  const DEFAULT_SOW_CHECKLIST: Array<{ label: string; description: string }> = [
+    { label: "Confirm client SOW template", description: "Ensure the SOW uses the client's required template format" },
+    { label: "Confirm Scope & Out-of-Scope", description: "Validate scope boundaries are clearly defined" },
+    { label: "Confirm rates & billing terms", description: "Verify hourly/daily rates and payment schedule" },
+    { label: "Confirm project start / end dates", description: "Lock in project timeline and milestone dates" },
+    { label: "Confirm sponsor & governance", description: "Identify executive sponsor and governance structure" },
+    { label: "Confirm data/privacy terms", description: "Ensure data handling and privacy requirements are addressed" },
+    { label: "Confirm IP / usage rights", description: "Clarify intellectual property ownership and usage terms" },
+  ];
+
+  app.get("/api/proposals", async (req, res) => {
+    try {
+      const proposals = await storage.getProposals();
+      res.json(proposals);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch proposals" });
+    }
+  });
+
+  app.get("/api/proposals/:id", async (req, res) => {
+    try {
+      const proposal = await storage.getProposal(req.params.id);
+      if (!proposal) {
+        return res.status(404).json({ error: "Proposal not found" });
+      }
+      res.json(proposal);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch proposal" });
+    }
+  });
+
+  app.post("/api/proposals", async (req, res) => {
+    try {
+      const result = insertProposalSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ error: fromError(result.error).toString() });
+      }
+
+      const proposal = await storage.createProposal(result.data);
+      
+      // Create default checklist items
+      const checklistItems: InsertSowChecklistItem[] = DEFAULT_SOW_CHECKLIST.map((item, index) => ({
+        proposalId: proposal.id,
+        label: item.label,
+        description: item.description,
+        isComplete: false,
+        orderIndex: index,
+      }));
+      
+      await storage.createManySowChecklistItems(checklistItems);
+      
+      // Return proposal with checklist
+      const fullProposal = await storage.getProposal(proposal.id);
+      res.status(201).json(fullProposal);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create proposal" });
+    }
+  });
+
+  app.patch("/api/proposals/:id", async (req, res) => {
+    try {
+      const existingProposal = await storage.getProposal(req.params.id);
+      if (!existingProposal) {
+        return res.status(404).json({ error: "Proposal not found" });
+      }
+
+      const allowedFields = ["clientName", "title", "rawText", "estimatedStart", "estimatedEnd", "rateInfo", "convertedProjectId"];
+      const filteredBody = Object.fromEntries(
+        Object.entries(req.body).filter(([key]) => allowedFields.includes(key))
+      );
+
+      if (Object.keys(filteredBody).length === 0) {
+        return res.status(400).json({ error: "No valid fields provided for update" });
+      }
+
+      const proposal = await storage.updateProposal(req.params.id, filteredBody);
+      res.json(proposal);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update proposal" });
+    }
+  });
+
+  app.patch("/api/proposals/:id/status", async (req, res) => {
+    try {
+      const existingProposal = await storage.getProposal(req.params.id);
+      if (!existingProposal) {
+        return res.status(404).json({ error: "Proposal not found" });
+      }
+
+      const { status } = req.body;
+      if (!status || !["DRAFT", "IN_REVIEW", "SIGNED", "CONVERTED"].includes(status)) {
+        return res.status(400).json({ error: "Invalid status. Must be DRAFT, IN_REVIEW, SIGNED, or CONVERTED" });
+      }
+
+      const proposal = await storage.updateProposal(req.params.id, { status });
+      res.json(proposal);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update proposal status" });
+    }
+  });
+
+  app.delete("/api/proposals/:id", async (req, res) => {
+    try {
+      const success = await storage.deleteProposal(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Proposal not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete proposal" });
+    }
+  });
+
+  // ============= SOW CHECKLIST ITEMS =============
+
+  app.patch("/api/sow-checklist-items/:id", async (req, res) => {
+    try {
+      const existingItem = await storage.getSowChecklistItem(req.params.id);
+      if (!existingItem) {
+        return res.status(404).json({ error: "Checklist item not found" });
+      }
+
+      const { isComplete } = req.body;
+      if (typeof isComplete !== "boolean") {
+        return res.status(400).json({ error: "isComplete must be a boolean" });
+      }
+
+      const item = await storage.updateSowChecklistItem(req.params.id, { isComplete });
+      res.json(item);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update checklist item" });
+    }
+  });
+
+  // ============= AI PROPOSAL ANALYSIS =============
+
+  app.post("/api/ai/proposals/:id/analyse", async (req, res) => {
+    try {
+      const proposal = await storage.getProposal(req.params.id);
+      if (!proposal) {
+        return res.status(404).json({ error: "Proposal not found" });
+      }
+
+      if (!proposal.rawText || proposal.rawText.trim().length === 0) {
+        return res.status(400).json({ error: "Proposal has no text to analyze" });
+      }
+
+      const userPrompt = buildProposalAnalysisUserPrompt(
+        proposal.clientName,
+        proposal.title,
+        proposal.rawText
+      );
+
+      const llmResult = await callLLM({
+        systemPrompt: PROPOSAL_ANALYSIS_SYSTEM_PROMPT,
+        userContent: userPrompt,
+        temperature: 0.3,
+        maxTokens: 3000,
+      });
+
+      if (!llmResult.success) {
+        return res.status(500).json({ error: llmResult.error });
+      }
+
+      const parsed = parseJSONResponse<ProposalAnalysisResult>(llmResult.content, proposalAnalysisResultSchema);
+      if (!parsed.success) {
+        return res.status(500).json({ error: "Failed to parse analysis result", details: parsed.error });
+      }
+
+      res.json(parsed.data);
+    } catch (error) {
+      console.error("Failed to analyze proposal:", error);
+      res.status(500).json({ error: "Failed to analyze proposal" });
     }
   });
 

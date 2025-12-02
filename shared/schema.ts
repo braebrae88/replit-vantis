@@ -30,6 +30,9 @@ export const opportunityStatusEnum = pgEnum("opportunity_status", ["idea", "qual
 export const artifactTypeEnum = pgEnum("artifact_type", ["activation_map_doc", "exec_brief", "funding_nav_pack", "safe_prototype_doc", "stakeholder_map", "value_scorecard_doc", "custom"]);
 export const sectionStatusEnum = pgEnum("section_status", ["empty", "partial", "complete"]);
 
+// Proposal Enums
+export const proposalStatusEnum = pgEnum("proposal_status", ["DRAFT", "IN_REVIEW", "SIGNED", "CONVERTED"]);
+
 // Projects Table
 export const projects = pgTable("projects", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -252,6 +255,33 @@ export const artifactSections = pgTable("artifact_sections", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+// Proposals Table
+export const proposals = pgTable("proposals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clientName: text("client_name").notNull(),
+  title: text("title").notNull(),
+  rawText: text("raw_text").notNull(),
+  status: proposalStatusEnum("status").notNull().default("DRAFT"),
+  estimatedStart: timestamp("estimated_start"),
+  estimatedEnd: timestamp("estimated_end"),
+  rateInfo: text("rate_info"),
+  convertedProjectId: varchar("converted_project_id").references(() => projects.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// SOW Checklist Items Table
+export const sowChecklistItems = pgTable("sow_checklist_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  proposalId: varchar("proposal_id").notNull().references(() => proposals.id, { onDelete: "cascade" }),
+  label: text("label").notNull(),
+  description: text("description"),
+  isComplete: boolean("is_complete").notNull().default(false),
+  orderIndex: integer("order_index").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 // Relations
 export const projectsRelations = relations(projects, ({ many }) => ({
   useCases: many(useCases),
@@ -401,6 +431,21 @@ export const artifactSectionsRelations = relations(artifactSections, ({ one }) =
   }),
 }));
 
+export const proposalsRelations = relations(proposals, ({ one, many }) => ({
+  convertedProject: one(projects, {
+    fields: [proposals.convertedProjectId],
+    references: [projects.id],
+  }),
+  checklistItems: many(sowChecklistItems),
+}));
+
+export const sowChecklistItemsRelations = relations(sowChecklistItems, ({ one }) => ({
+  proposal: one(proposals, {
+    fields: [sowChecklistItems.proposalId],
+    references: [proposals.id],
+  }),
+}));
+
 // Zod Schemas for Insert/Select
 export const insertProjectSchema = createInsertSchema(projects).omit({
   id: true,
@@ -543,6 +588,30 @@ export const updateArtifactSectionSchema = insertArtifactSectionSchema.partial()
 
 export const selectArtifactSectionSchema = createSelectSchema(artifactSections);
 
+export const insertProposalSchema = createInsertSchema(proposals).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateProposalSchema = insertProposalSchema.partial().extend({
+  id: z.string().uuid("Invalid proposal ID format"),
+});
+
+export const selectProposalSchema = createSelectSchema(proposals);
+
+export const insertSowChecklistItemSchema = createInsertSchema(sowChecklistItems).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateSowChecklistItemSchema = insertSowChecklistItemSchema.partial().extend({
+  id: z.string().uuid("Invalid checklist item ID format"),
+});
+
+export const selectSowChecklistItemSchema = createSelectSchema(sowChecklistItems);
+
 export const insertFileEventSchema = z.object({
   projectId: z.string().uuid("Invalid project ID format"),
   fileName: z.string().min(1, "File name is required"),
@@ -627,6 +696,16 @@ export type InsertArtifactSection = z.infer<typeof insertArtifactSectionSchema>;
 export type UpdateArtifactSection = z.infer<typeof updateArtifactSectionSchema>;
 
 export type ArtifactWithSections = Artifact & { sections: ArtifactSection[] };
+
+export type Proposal = typeof proposals.$inferSelect;
+export type InsertProposal = z.infer<typeof insertProposalSchema>;
+export type UpdateProposal = z.infer<typeof updateProposalSchema>;
+
+export type SowChecklistItem = typeof sowChecklistItems.$inferSelect;
+export type InsertSowChecklistItem = z.infer<typeof insertSowChecklistItemSchema>;
+export type UpdateSowChecklistItem = z.infer<typeof updateSowChecklistItemSchema>;
+
+export type ProposalWithChecklist = Proposal & { checklistItems: SowChecklistItem[] };
 
 // Next Actions Types (not stored in DB, computed on-the-fly)
 export const nextActionSeverityEnum = ["low", "medium", "high", "critical"] as const;

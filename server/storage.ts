@@ -15,6 +15,8 @@ import {
   metricSnapshots,
   artifacts,
   artifactSections,
+  proposals,
+  sowChecklistItems,
   type Project,
   type InsertProject,
   type UseCase,
@@ -48,6 +50,11 @@ import {
   type ArtifactSection,
   type InsertArtifactSection,
   type ArtifactWithSections,
+  type Proposal,
+  type InsertProposal,
+  type SowChecklistItem,
+  type InsertSowChecklistItem,
+  type ProposalWithChecklist,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql } from "drizzle-orm";
@@ -175,6 +182,21 @@ export interface IStorage {
   updateArtifactSection(id: string, section: Partial<InsertArtifactSection>): Promise<ArtifactSection | undefined>;
   deleteArtifactSection(id: string): Promise<boolean>;
   createManyArtifactSections(sections: InsertArtifactSection[]): Promise<ArtifactSection[]>;
+
+  // Proposals
+  getProposals(): Promise<ProposalWithChecklist[]>;
+  getProposal(id: string): Promise<ProposalWithChecklist | undefined>;
+  createProposal(proposal: InsertProposal): Promise<Proposal>;
+  updateProposal(id: string, proposal: Partial<InsertProposal>): Promise<Proposal | undefined>;
+  deleteProposal(id: string): Promise<boolean>;
+
+  // SOW Checklist Items
+  getSowChecklistItems(proposalId: string): Promise<SowChecklistItem[]>;
+  getSowChecklistItem(id: string): Promise<SowChecklistItem | undefined>;
+  createSowChecklistItem(item: InsertSowChecklistItem): Promise<SowChecklistItem>;
+  createManySowChecklistItems(items: InsertSowChecklistItem[]): Promise<SowChecklistItem[]>;
+  updateSowChecklistItem(id: string, item: Partial<InsertSowChecklistItem>): Promise<SowChecklistItem | undefined>;
+  deleteSowChecklistItem(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -731,6 +753,78 @@ export class DatabaseStorage implements IStorage {
     if (sectionsToCreate.length === 0) return [];
     const created = await db.insert(artifactSections).values(sectionsToCreate).returning();
     return created;
+  }
+
+  // Proposals
+  async getProposals(): Promise<ProposalWithChecklist[]> {
+    const allProposals = await db.select().from(proposals).orderBy(sql`${proposals.createdAt} desc`);
+    const result: ProposalWithChecklist[] = [];
+    for (const proposal of allProposals) {
+      const checklistItems = await db.select().from(sowChecklistItems).where(eq(sowChecklistItems.proposalId, proposal.id)).orderBy(sowChecklistItems.orderIndex);
+      result.push({ ...proposal, checklistItems });
+    }
+    return result;
+  }
+
+  async getProposal(id: string): Promise<ProposalWithChecklist | undefined> {
+    const [proposal] = await db.select().from(proposals).where(eq(proposals.id, id));
+    if (!proposal) return undefined;
+    const checklistItems = await db.select().from(sowChecklistItems).where(eq(sowChecklistItems.proposalId, id)).orderBy(sowChecklistItems.orderIndex);
+    return { ...proposal, checklistItems };
+  }
+
+  async createProposal(proposal: InsertProposal): Promise<Proposal> {
+    const [newProposal] = await db.insert(proposals).values(proposal).returning();
+    return newProposal;
+  }
+
+  async updateProposal(id: string, proposal: Partial<InsertProposal>): Promise<Proposal | undefined> {
+    const [updated] = await db
+      .update(proposals)
+      .set({ ...proposal, updatedAt: new Date() })
+      .where(eq(proposals.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteProposal(id: string): Promise<boolean> {
+    const result = await db.delete(proposals).where(eq(proposals.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  // SOW Checklist Items
+  async getSowChecklistItems(proposalId: string): Promise<SowChecklistItem[]> {
+    return await db.select().from(sowChecklistItems).where(eq(sowChecklistItems.proposalId, proposalId)).orderBy(sowChecklistItems.orderIndex);
+  }
+
+  async getSowChecklistItem(id: string): Promise<SowChecklistItem | undefined> {
+    const [item] = await db.select().from(sowChecklistItems).where(eq(sowChecklistItems.id, id));
+    return item;
+  }
+
+  async createSowChecklistItem(item: InsertSowChecklistItem): Promise<SowChecklistItem> {
+    const [newItem] = await db.insert(sowChecklistItems).values(item).returning();
+    return newItem;
+  }
+
+  async createManySowChecklistItems(items: InsertSowChecklistItem[]): Promise<SowChecklistItem[]> {
+    if (items.length === 0) return [];
+    const created = await db.insert(sowChecklistItems).values(items).returning();
+    return created;
+  }
+
+  async updateSowChecklistItem(id: string, item: Partial<InsertSowChecklistItem>): Promise<SowChecklistItem | undefined> {
+    const [updated] = await db
+      .update(sowChecklistItems)
+      .set({ ...item, updatedAt: new Date() })
+      .where(eq(sowChecklistItems.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteSowChecklistItem(id: string): Promise<boolean> {
+    const result = await db.delete(sowChecklistItems).where(eq(sowChecklistItems.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
   }
 }
 
