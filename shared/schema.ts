@@ -36,8 +36,9 @@ export const proposalStatusEnum = pgEnum("proposal_status", ["DRAFT", "IN_REVIEW
 // Project Status Enum
 export const projectStatusEnum = pgEnum("project_status", ["ACTIVE", "ARCHIVED"]);
 
-// Opportunity Suggestion Enum
+// Opportunity Suggestion Enums
 export const opportunitySuggestionStatusEnum = pgEnum("opportunity_suggestion_status", ["PENDING", "APPROVED", "REJECTED"]);
+export const evidenceTagEnum = pgEnum("evidence_tag", ["explicit_language", "expansion_request", "funding_window"]);
 
 // Projects Table
 export const projects = pgTable("projects", {
@@ -297,6 +298,8 @@ export const opportunitySuggestions = pgTable("opportunity_suggestions", {
   title: text("title").notNull(),
   clientName: text("client_name"),
   rationale: text("rationale").notNull(),
+  supportingQuotes: text("supporting_quotes").array(),
+  evidenceTag: evidenceTagEnum("evidence_tag"),
   confidence: real("confidence").notNull().default(0.5),
   sourceEventId: varchar("source_event_id").references(() => events.id, { onDelete: "set null" }),
   status: opportunitySuggestionStatusEnum("status").notNull().default("PENDING"),
@@ -652,6 +655,8 @@ export const insertOpportunitySuggestionSchema = createInsertSchema(opportunityS
   status: z.enum(["PENDING", "APPROVED", "REJECTED"]).optional(),
   approvedProposalId: z.string().nullish(),
   confidence: z.number().min(0).max(1).optional(),
+  supportingQuotes: z.array(z.string()).nullish(),
+  evidenceTag: z.enum(["explicit_language", "expansion_request", "funding_window"]).nullish(),
 });
 
 export const updateOpportunitySuggestionSchema = insertOpportunitySuggestionSchema.partial().extend({
