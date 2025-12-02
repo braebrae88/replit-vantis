@@ -48,6 +48,7 @@ import {
 } from "./deliverableMetrics";
 import { getDeliverableGuidance } from "./guidanceService";
 import { VANTIS_SYSTEM_PROMPT } from "./ai/systemPrompt";
+import { EVENT_ANALYSIS_SYSTEM_PROMPT, EventAnalysisResult } from "./ai/eventAnalysisPrompt";
 import OpenAI from "openai";
 
 export async function registerRoutes(
@@ -1001,6 +1002,145 @@ User Question: ${message}`;
     } catch (error) {
       console.error("Failed to process companion request:", error);
       res.status(500).json({ error: "Failed to process companion request" });
+    }
+  });
+
+  // ============= EVENT ANALYSIS =============
+
+  const eventAnalysisSchema = z.object({
+    rawText: z.string().min(10, "Text must be at least 10 characters"),
+  });
+
+  app.post("/api/ai/events/:eventId/analyse", async (req, res) => {
+    try {
+      const eventId = req.params.eventId;
+      const event = await storage.getEvent(eventId);
+      if (!event) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+
+      const result = eventAnalysisSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ error: fromError(result.error).toString() });
+      }
+
+      const { rawText } = result.data;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: EVENT_ANALYSIS_SYSTEM_PROMPT },
+          { role: "user", content: `Analyse this meeting/email transcript:\n\n${rawText}` },
+        ],
+        temperature: 0.3,
+        max_tokens: 2000,
+        response_format: { type: "json_object" },
+      });
+
+      const responseText = completion.choices[0]?.message?.content;
+      if (!responseText) {
+        return res.status(500).json({ error: "No response from AI" });
+      }
+
+      let analysis: EventAnalysisResult;
+      try {
+        analysis = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error("Failed to parse AI response:", responseText);
+        return res.status(500).json({ error: "Failed to parse AI response" });
+      }
+
+      const createdInsights: any[] = [];
+      const createdSeeds: any[] = [];
+
+      const sentimentMap: Record<string, "positive" | "neutral" | "negative"> = {
+        POSITIVE: "positive",
+        NEUTRAL: "neutral",
+        NEGATIVE: "negative",
+      };
+      const sentiment = sentimentMap[analysis.sentiment] || "neutral";
+
+      if (analysis.summaryBullets && analysis.summaryBullets.length > 0) {
+        const insight = await storage.createEngagementInsight({
+          projectId: event.projectId,
+          eventId: event.id,
+          type: "meeting_summary",
+          title: `Summary: ${event.title}`,
+          summary: analysis.summaryBullets.join("\n• "),
+          sentiment,
+          importance: "medium",
+          tags: ["auto-generated"],
+          createdByAI: true,
+        });
+        createdInsights.push(insight);
+      }
+
+      for (const decision of analysis.decisions || []) {
+        const insight = await storage.createEngagementInsight({
+          projectId: event.projectId,
+          eventId: event.id,
+          type: "decision",
+          title: decision.length > 100 ? decision.substring(0, 97) + "..." : decision,
+          summary: decision,
+          sentiment,
+          importance: "high",
+          tags: ["auto-generated", "decision"],
+          createdByAI: true,
+        });
+        createdInsights.push(insight);
+      }
+
+      for (const risk of analysis.risks || []) {
+        const insight = await storage.createEngagementInsight({
+          projectId: event.projectId,
+          eventId: event.id,
+          type: "risk",
+          title: risk.length > 100 ? risk.substring(0, 97) + "..." : risk,
+          summary: risk,
+          sentiment: "negative",
+          importance: "high",
+          tags: ["auto-generated", "risk"],
+          createdByAI: true,
+        });
+        createdInsights.push(insight);
+      }
+
+      for (const question of analysis.openQuestions || []) {
+        const insight = await storage.createEngagementInsight({
+          projectId: event.projectId,
+          eventId: event.id,
+          type: "open_question",
+          title: question.length > 100 ? question.substring(0, 97) + "..." : question,
+          summary: question,
+          sentiment: "neutral",
+          importance: "medium",
+          tags: ["auto-generated", "question"],
+          createdByAI: true,
+        });
+        createdInsights.push(insight);
+      }
+
+      for (const hint of analysis.opportunityHints || []) {
+        const seed = await storage.createOpportunitySeed({
+          projectId: event.projectId,
+          title: hint.length > 100 ? hint.substring(0, 97) + "..." : hint,
+          description: hint,
+          source: "meeting",
+          status: "idea",
+        });
+        createdSeeds.push(seed);
+      }
+
+      res.json({
+        analysis,
+        createdInsights: createdInsights.length,
+        createdSeeds: createdSeeds.length,
+        insights: createdInsights,
+        seeds: createdSeeds,
+      });
+    } catch (error) {
+      console.error("Failed to analyse event:", error);
+      res.status(500).json({ error: "Failed to analyse event" });
     }
   });
 
