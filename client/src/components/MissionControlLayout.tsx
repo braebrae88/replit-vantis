@@ -1,4 +1,4 @@
-import { Menu, FileSpreadsheet } from "lucide-react";
+import { Menu, FileSpreadsheet, FileText } from "lucide-react";
 import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,12 @@ export default function MissionControlLayout({ children }: { children: React.Rea
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          <Link href="/proposals">
+            <Button variant="ghost" size="sm" className="gap-2 text-white hover:bg-white/10 hover:text-white" data-testid="link-proposals">
+              <FileText className="w-4 h-4" />
+              <span className="hidden sm:inline">Proposals</span>
+            </Button>
+          </Link>
           <Link href="/timesheet">
             <Button variant="ghost" size="sm" className="gap-2 text-white hover:bg-white/10 hover:text-white" data-testid="link-timesheet">
               <FileSpreadsheet className="w-4 h-4" />

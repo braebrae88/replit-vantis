@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import MissionControl from "@/pages/MissionControl";
 import Timesheet from "@/pages/Timesheet";
+import Proposals from "@/pages/Proposals";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -13,6 +14,7 @@ function Router() {
       <Route path="/mission-control" component={MissionControl} />
       <Route path="/project/:id" component={MissionControl} />
       <Route path="/timesheet" component={Timesheet} />
+      <Route path="/proposals" component={Proposals} />
       <Route component={NotFound} />
     </Switch>
   );

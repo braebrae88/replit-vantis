@@ -260,7 +260,7 @@ export const proposals = pgTable("proposals", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   clientName: text("client_name").notNull(),
   title: text("title").notNull(),
-  rawText: text("raw_text").notNull(),
+  rawText: text("raw_text"),
   status: proposalStatusEnum("status").notNull().default("DRAFT"),
   estimatedStart: timestamp("estimated_start"),
   estimatedEnd: timestamp("estimated_end"),

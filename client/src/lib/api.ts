@@ -34,6 +34,10 @@ import type {
   ArtifactSection,
   ArtifactWithSections,
   InsertArtifact,
+  Proposal,
+  InsertProposal,
+  SowChecklistItem,
+  ProposalWithChecklist,
 } from "@shared/schema";
 
 export interface ImpactStoryResponse {
@@ -113,6 +117,48 @@ export interface SoWBootstrapResponse {
     endDate: string | null;
     keyMilestones: string[];
   };
+}
+
+export interface ProposalAnalysisObjective {
+  title: string;
+  description: string;
+  priority: "high" | "medium" | "low";
+}
+
+export interface ProposalAnalysisUseCase {
+  name: string;
+  problemStatement: string;
+  suggestedPhase?: string;
+}
+
+export interface ProposalAnalysisPhase {
+  phase: string;
+  description: string;
+  estimatedDuration: string;
+  keyDeliverables: string[];
+}
+
+export interface ProposalAnalysisQuestion {
+  question: string;
+  context: string;
+  urgency: "must-answer-before-sow" | "nice-to-clarify" | "can-defer";
+}
+
+export interface ProposalAnalysisRisk {
+  risk: string;
+  mitigation?: string;
+}
+
+export interface ProposalAnalysisResponse {
+  objectives: ProposalAnalysisObjective[];
+  useCases: ProposalAnalysisUseCase[];
+  phaseBreakdown: ProposalAnalysisPhase[];
+  openQuestions: ProposalAnalysisQuestion[];
+  estimatedTimeline?: {
+    totalWeeks?: number;
+    startRecommendation?: string;
+  };
+  riskFlags?: ProposalAnalysisRisk[];
 }
 
 async function handleResponse<T>(response: Response): Promise<T> {
@@ -797,6 +843,69 @@ export const api = {
   accountGrowth: {
     get: async (projectId: string): Promise<AccountGrowthResponse> => {
       const response = await fetch(`/api/projects/${projectId}/account-growth`);
+      return handleResponse(response);
+    },
+  },
+
+  // Proposals
+  proposals: {
+    list: async (): Promise<ProposalWithChecklist[]> => {
+      const response = await fetch("/api/proposals");
+      return handleResponse(response);
+    },
+    get: async (id: string): Promise<ProposalWithChecklist> => {
+      const response = await fetch(`/api/proposals/${id}`);
+      return handleResponse(response);
+    },
+    create: async (data: InsertProposal): Promise<ProposalWithChecklist> => {
+      const response = await fetch("/api/proposals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      return handleResponse(response);
+    },
+    update: async (id: string, data: Partial<InsertProposal>): Promise<Proposal> => {
+      const response = await fetch(`/api/proposals/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      return handleResponse(response);
+    },
+    updateStatus: async (id: string, status: string): Promise<Proposal> => {
+      const response = await fetch(`/api/proposals/${id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      return handleResponse(response);
+    },
+    delete: async (id: string): Promise<void> => {
+      const response = await fetch(`/api/proposals/${id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to delete proposal");
+      }
+    },
+    analyse: async (id: string): Promise<ProposalAnalysisResponse> => {
+      const response = await fetch(`/api/ai/proposals/${id}/analyse`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      return handleResponse(response);
+    },
+  },
+
+  // SOW Checklist Items
+  sowChecklistItems: {
+    toggle: async (id: string, isComplete: boolean): Promise<SowChecklistItem> => {
+      const response = await fetch(`/api/sow-checklist-items/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isComplete }),
+      });
       return handleResponse(response);
     },
   },
