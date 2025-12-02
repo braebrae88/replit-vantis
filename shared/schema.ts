@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, pgEnum, real, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -11,6 +11,10 @@ export const taskPriorityEnum = pgEnum("task_priority", ["low", "medium", "high"
 export const riskCategoryEnum = pgEnum("risk_category", ["technical", "business", "operational", "security", "compliance"]);
 export const riskStatusEnum = pgEnum("risk_status", ["identified", "analyzing", "mitigating", "resolved", "accepted"]);
 export const eventTypeEnum = pgEnum("event_type", ["meeting", "email", "file", "milestone", "decision"]);
+export const deliverableTypeEnum = pgEnum("deliverable_type", ["activation_map", "safe_prototypes", "ms_funding_nav", "exec_framing", "custom"]);
+export const deliverableStatusEnum = pgEnum("deliverable_status", ["not_started", "in_progress", "blocked", "done"]);
+export const milestoneStatusEnum = pgEnum("milestone_status", ["not_started", "in_progress", "blocked", "done"]);
+export const activityStatusEnum = pgEnum("activity_status", ["not_started", "in_progress", "blocked", "done"]);
 
 // Projects Table
 export const projects = pgTable("projects", {
@@ -120,6 +124,47 @@ export const events = pgTable("events", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Deliverables Table
+export const deliverables = pgTable("deliverables", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  type: deliverableTypeEnum("type").notNull(),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  status: deliverableStatusEnum("status").notNull().default("not_started"),
+  progress: real("progress").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Milestones Table
+export const milestones = pgTable("milestones", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  deliverableId: varchar("deliverable_id").notNull().references(() => deliverables.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  status: milestoneStatusEnum("status").notNull().default("not_started"),
+  orderIndex: integer("order_index").notNull(),
+  expectedHours: real("expected_hours"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Activities Table
+export const activities = pgTable("activities", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  milestoneId: varchar("milestone_id").notNull().references(() => milestones.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  status: activityStatusEnum("status").notNull().default("not_started"),
+  orderIndex: integer("order_index").notNull(),
+  requiresInput: boolean("requires_input").notNull().default(false),
+  requiredInputs: text("required_inputs").array().notNull().default(sql`ARRAY[]::text[]`),
+  createdTaskId: varchar("created_task_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 // Relations
 export const projectsRelations = relations(projects, ({ many }) => ({
   useCases: many(useCases),
@@ -128,6 +173,7 @@ export const projectsRelations = relations(projects, ({ many }) => ({
   tasks: many(tasks),
   stakeholders: many(stakeholders),
   events: many(events),
+  deliverables: many(deliverables),
 }));
 
 export const useCasesRelations = relations(useCases, ({ one, many }) => ({
@@ -195,6 +241,29 @@ export const eventsRelations = relations(events, ({ one }) => ({
   }),
 }));
 
+export const deliverablesRelations = relations(deliverables, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [deliverables.projectId],
+    references: [projects.id],
+  }),
+  milestones: many(milestones),
+}));
+
+export const milestonesRelations = relations(milestones, ({ one, many }) => ({
+  deliverable: one(deliverables, {
+    fields: [milestones.deliverableId],
+    references: [deliverables.id],
+  }),
+  activities: many(activities),
+}));
+
+export const activitiesRelations = relations(activities, ({ one }) => ({
+  milestone: one(milestones, {
+    fields: [activities.milestoneId],
+    references: [milestones.id],
+  }),
+}));
+
 // Zod Schemas for Insert/Select
 export const insertProjectSchema = createInsertSchema(projects).omit({
   id: true,
@@ -259,6 +328,30 @@ export const insertEventSchema = createInsertSchema(events).omit({
 
 export const selectEventSchema = createSelectSchema(events);
 
+export const insertDeliverableSchema = createInsertSchema(deliverables).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const selectDeliverableSchema = createSelectSchema(deliverables);
+
+export const insertMilestoneSchema = createInsertSchema(milestones).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const selectMilestoneSchema = createSelectSchema(milestones);
+
+export const insertActivitySchema = createInsertSchema(activities).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const selectActivitySchema = createSelectSchema(activities);
+
 export const insertFileEventSchema = z.object({
   projectId: z.string().uuid("Invalid project ID format"),
   fileName: z.string().min(1, "File name is required"),
@@ -313,6 +406,15 @@ export type InsertStakeholder = z.infer<typeof insertStakeholderSchema>;
 
 export type Event = typeof events.$inferSelect;
 export type InsertEvent = z.infer<typeof insertEventSchema>;
+
+export type Deliverable = typeof deliverables.$inferSelect;
+export type InsertDeliverable = z.infer<typeof insertDeliverableSchema>;
+
+export type Milestone = typeof milestones.$inferSelect;
+export type InsertMilestone = z.infer<typeof insertMilestoneSchema>;
+
+export type Activity = typeof activities.$inferSelect;
+export type InsertActivity = z.infer<typeof insertActivitySchema>;
 
 // Next Actions Types (not stored in DB, computed on-the-fly)
 export const nextActionSeverityEnum = ["low", "medium", "high", "critical"] as const;

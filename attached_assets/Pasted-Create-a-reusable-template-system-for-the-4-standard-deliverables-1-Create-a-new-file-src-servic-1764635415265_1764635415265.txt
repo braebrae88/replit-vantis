@@ -1,0 +1,72 @@
+Create a reusable template system for the 4 standard deliverables.
+
+1) Create a new file `src/services/deliverableTemplates.ts` in the backend.
+
+2) In that file, define a TypeScript type:
+
+export type DeliverableTemplate = {
+  type: "ACTIVATION_MAP" | "SAFE_PROTOTYPES" | "MS_FUNDING_NAV" | "EXEC_FRAMING";
+  name: string;
+  description: string;
+  milestones: {
+    name: string;
+    description: string;
+    expectedHours?: number;
+    activities: {
+      name: string;
+      description: string;
+      requiresInput?: boolean;
+      requiredInputs?: string[];
+    }[];
+  }[];
+};
+
+3) Add an exported `DELIVERABLE_TEMPLATES: DeliverableTemplate[]` array containing the 4 templates:
+
+- ACTIVATION_MAP with milestones:
+  - Workflow Discovery Completed
+  - Readiness Assessment Completed
+  - Dependency Map Built
+  - Sequencing Logic Finalized
+  - Funding Alignment Check
+  - Pre-Launch Checklist Drafted
+  - Activation Map Finalized & Reviewed
+
+- SAFE_PROTOTYPES with milestones:
+  - Prototype Brief
+  - Data Plan
+  - Sprint 1 Review
+  - Sprint 2 Review
+  - Feasibility Validation
+  - Success Metrics Defined
+  - Final Demo
+
+- MS_FUNDING_NAV with milestones:
+  - Foundry Alignment Assessment
+  - Frontier Program Fit
+  - ECIF Requirements Checklist
+  - Internal Narrative Developed
+  - Microsoft Touchpoints Planned
+  - Co-funding Application Draft
+
+- EXEC_FRAMING with milestones:
+  - KPI Baseline
+  - Value Story Draft
+  - Risk Summary
+  - Readiness Overview
+  - Asks / Decision Points
+  - Executive Brief Draft
+  - Final Review
+
+For each milestone, add 3–6 activities using the descriptions we discussed (workflow discovery, readiness workshop, prototype sprint reviews, funding mapping, exec brief drafting, etc.), and set `requiresInput` + `requiredInputs` where appropriate.
+
+4) Add a helper function:
+
+export async function instantiateDeliverableFromTemplate(projectId: string, templateType: DeliverableTemplate["type"]) { ... }
+
+This should:
+- find the matching template,
+- create a Deliverable row,
+- create associated Milestones and Activities with proper orderIndex.
+
+5) Update POST /projects/:id/deliverables to accept a `type` and call this helper to auto-populate the workflow.

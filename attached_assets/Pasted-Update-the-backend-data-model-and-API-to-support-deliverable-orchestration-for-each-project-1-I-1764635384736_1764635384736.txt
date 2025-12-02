@@ -1,0 +1,56 @@
+Update the backend data model and API to support “deliverable orchestration” for each project.
+
+1) In the Prisma schema, add these models:
+
+model Deliverable {
+  id             String   @id @default(cuid())
+  project        Project  @relation(fields: [projectId], references: [id])
+  projectId      String
+  type           String   // e.g. "ACTIVATION_MAP", "SAFE_PROTOTYPES", "MS_FUNDING_NAV", "EXEC_FRAMING"
+  name           String
+  description    String
+  status         String   // e.g. "NOT_STARTED", "IN_PROGRESS", "BLOCKED", "DONE"
+  progress       Float    @default(0) // 0–100
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  milestones     Milestone[]
+}
+
+model Milestone {
+  id             String        @id @default(cuid())
+  deliverable    Deliverable   @relation(fields: [deliverableId], references: [id])
+  deliverableId  String
+  name           String
+  description    String
+  status         String        // "NOT_STARTED", "IN_PROGRESS", "BLOCKED", "DONE"
+  orderIndex     Int
+  expectedHours  Float?        // optional estimate
+  activities     Activity[]
+}
+
+model Activity {
+  id             String     @id @default(cuid())
+  milestone      Milestone  @relation(fields: [milestoneId], references: [id])
+  milestoneId    String
+  name           String
+  description    String
+  status         String      // "NOT_STARTED", "IN_PROGRESS", "BLOCKED", "DONE"
+  orderIndex     Int
+  requiresInput  Boolean     @default(false)
+  requiredInputs String[]    @default([]) // e.g. ["Workflow diagram", "Stakeholder list"]
+  createdTaskId  String?     // optional link to Task model when a concrete task is created
+}
+
+2) Run Prisma migrate to update the DB.
+
+3) Add REST endpoints:
+
+- GET /projects/:id/deliverables
+- POST /projects/:id/deliverables  (create deliverable of a given type)
+- PATCH /deliverables/:id          (update status, progress)
+- GET /deliverables/:id/milestones
+- PATCH /milestones/:id
+- GET /milestones/:id/activities
+- PATCH /activities/:id
+
+Return JSON with nested data where helpful. Make sure all handlers use TypeScript types and handle errors cleanly.
