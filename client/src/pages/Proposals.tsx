@@ -188,7 +188,7 @@ export default function Proposals() {
       queryClient.invalidateQueries({ queryKey: ["proposals", selectedProposalId] });
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       queryClient.invalidateQueries({ queryKey: ["sidebar-items"] });
-      setLocation(`/projects/${result.projectId}?from=sow`);
+      setLocation(`/project/${result.projectId}?from=sow`);
     },
     onError: (error) => {
       toast({

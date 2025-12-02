@@ -4474,7 +4474,7 @@ export default function MissionControl() {
     const params = new URLSearchParams(searchString);
     if (params.get("from") === "sow") {
       setShowSowBanner(true);
-      setLocation(`/projects/${projectId}`, { replace: true });
+      setLocation(`/project/${projectId}`, { replace: true });
     }
   }, [searchString, projectId, setLocation]);
   

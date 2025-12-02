@@ -129,7 +129,7 @@ function QuickProposalDialog({
 
 function CurrentItem({ item, isSelected }: { item: SidebarCurrentItem; isSelected: boolean }) {
   return (
-    <Link href={`/projects/${item.id}`}>
+    <Link href={`/project/${item.id}`}>
       <div
         className={cn(
           "p-2.5 rounded-lg cursor-pointer transition-all group",
@@ -335,7 +335,7 @@ export function ProjectSidebar() {
     queryFn: () => api.opportunitySuggestions.list("PENDING"),
   });
 
-  const selectedProjectId = location.startsWith("/projects/") ? params.id : undefined;
+  const selectedProjectId = location.startsWith("/project/") ? params.id : undefined;
   const selectedProposalId = location.startsWith("/proposals/") ? params.id : undefined;
   const isSuggestionsPage = location === "/suggestions";
   const pendingCount = pendingSuggestions?.length ?? 0;
