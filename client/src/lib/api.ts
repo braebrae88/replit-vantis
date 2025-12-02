@@ -39,6 +39,8 @@ import type {
   InsertProposal,
   SowChecklistItem,
   ProposalWithChecklist,
+  ClientReport,
+  ReportSuggestion,
 } from "@shared/schema";
 
 export interface ImpactStoryResponse {
@@ -1004,6 +1006,78 @@ export const api = {
     },
     reject: async (id: string): Promise<OpportunitySuggestion> => {
       const response = await fetch(`/api/opportunity-suggestions/${id}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      return handleResponse(response);
+    },
+  },
+
+  // Client Reports
+  reports: {
+    list: async (projectId: string): Promise<ClientReport[]> => {
+      const response = await fetch(`/api/projects/${projectId}/reports`);
+      return handleResponse(response);
+    },
+    get: async (id: string): Promise<ClientReport> => {
+      const response = await fetch(`/api/reports/${id}`);
+      return handleResponse(response);
+    },
+    generate: async (projectId: string, options?: { periodDays?: number; useAI?: boolean }): Promise<ClientReport> => {
+      const response = await fetch(`/api/projects/${projectId}/reports/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(options || {}),
+      });
+      return handleResponse(response);
+    },
+    update: async (id: string, data: { contentMarkdown?: string; approvedBy?: string }): Promise<ClientReport> => {
+      const response = await fetch(`/api/reports/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      return handleResponse(response);
+    },
+    delete: async (id: string): Promise<void> => {
+      const response = await fetch(`/api/reports/${id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to delete report");
+      }
+    },
+  },
+
+  // Report Suggestions
+  reportSuggestions: {
+    list: async (projectId: string, status?: "PENDING" | "GENERATED" | "DISMISSED"): Promise<ReportSuggestion[]> => {
+      const url = status
+        ? `/api/projects/${projectId}/report-suggestions?status=${status}`
+        : `/api/projects/${projectId}/report-suggestions`;
+      const response = await fetch(url);
+      return handleResponse(response);
+    },
+    getPendingCount: async (projectId: string): Promise<{ count: number }> => {
+      const response = await fetch(`/api/projects/${projectId}/report-suggestions/pending-count`);
+      return handleResponse(response);
+    },
+    generate: async (id: string): Promise<{ suggestion: ReportSuggestion; report: ClientReport }> => {
+      const response = await fetch(`/api/report-suggestions/${id}/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      return handleResponse(response);
+    },
+    dismiss: async (id: string): Promise<ReportSuggestion> => {
+      const response = await fetch(`/api/report-suggestions/${id}/dismiss`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      return handleResponse(response);
+    },
+    evaluateTriggers: async (projectId: string): Promise<{ triggered: boolean; suggestion?: ReportSuggestion; reason?: string; details?: string }> => {
+      const response = await fetch(`/api/projects/${projectId}/evaluate-report-triggers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });

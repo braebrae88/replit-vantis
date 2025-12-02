@@ -9,6 +9,7 @@ import { CreateProjectDialog } from "@/components/CreateProjectDialog";
 import { CreateUseCaseDialog } from "@/components/CreateUseCaseDialog";
 import { CreateTaskDialog } from "@/components/CreateTaskDialog";
 import { CreateRiskDialog } from "@/components/CreateRiskDialog";
+import { ReportsTab } from "@/components/ReportsTab";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -4865,6 +4866,9 @@ export default function MissionControl() {
               <TabsTrigger value="artifacts" className="data-[state=active]:bg-background" data-testid="tab-artifacts">
                 Artifacts
               </TabsTrigger>
+              <TabsTrigger value="reports" className="data-[state=active]:bg-background" data-testid="tab-reports">
+                Reports
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -4922,6 +4926,10 @@ export default function MissionControl() {
                   initialArtifactId={selectedArtifactIdFromGuidance}
                   onArtifactIdChange={setSelectedArtifactIdFromGuidance}
                 />
+              </TabsContent>
+
+              <TabsContent value="reports" className="mt-0 h-full">
+                <ReportsTab projectId={project.id} />
               </TabsContent>
             </div>
 
