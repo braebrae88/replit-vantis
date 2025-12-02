@@ -17,6 +17,7 @@ import {
   artifactSections,
   proposals,
   sowChecklistItems,
+  opportunitySuggestions,
   type Project,
   type InsertProject,
   type UseCase,
@@ -55,6 +56,8 @@ import {
   type SowChecklistItem,
   type InsertSowChecklistItem,
   type ProposalWithChecklist,
+  type OpportunitySuggestion,
+  type InsertOpportunitySuggestion,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql } from "drizzle-orm";
@@ -197,6 +200,13 @@ export interface IStorage {
   createManySowChecklistItems(items: InsertSowChecklistItem[]): Promise<SowChecklistItem[]>;
   updateSowChecklistItem(id: string, item: Partial<InsertSowChecklistItem>): Promise<SowChecklistItem | undefined>;
   deleteSowChecklistItem(id: string): Promise<boolean>;
+
+  // Opportunity Suggestions
+  getOpportunitySuggestions(status?: "PENDING" | "APPROVED" | "REJECTED"): Promise<OpportunitySuggestion[]>;
+  getOpportunitySuggestion(id: string): Promise<OpportunitySuggestion | undefined>;
+  createOpportunitySuggestion(suggestion: InsertOpportunitySuggestion): Promise<OpportunitySuggestion>;
+  updateOpportunitySuggestion(id: string, suggestion: Partial<InsertOpportunitySuggestion>): Promise<OpportunitySuggestion | undefined>;
+  deleteOpportunitySuggestion(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -824,6 +834,38 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSowChecklistItem(id: string): Promise<boolean> {
     const result = await db.delete(sowChecklistItems).where(eq(sowChecklistItems.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  // Opportunity Suggestions
+  async getOpportunitySuggestions(status?: "PENDING" | "APPROVED" | "REJECTED"): Promise<OpportunitySuggestion[]> {
+    if (status) {
+      return await db.select().from(opportunitySuggestions).where(eq(opportunitySuggestions.status, status)).orderBy(sql`${opportunitySuggestions.createdAt} desc`);
+    }
+    return await db.select().from(opportunitySuggestions).orderBy(sql`${opportunitySuggestions.createdAt} desc`);
+  }
+
+  async getOpportunitySuggestion(id: string): Promise<OpportunitySuggestion | undefined> {
+    const [suggestion] = await db.select().from(opportunitySuggestions).where(eq(opportunitySuggestions.id, id));
+    return suggestion;
+  }
+
+  async createOpportunitySuggestion(suggestion: InsertOpportunitySuggestion): Promise<OpportunitySuggestion> {
+    const [newSuggestion] = await db.insert(opportunitySuggestions).values(suggestion).returning();
+    return newSuggestion;
+  }
+
+  async updateOpportunitySuggestion(id: string, suggestion: Partial<InsertOpportunitySuggestion>): Promise<OpportunitySuggestion | undefined> {
+    const [updated] = await db
+      .update(opportunitySuggestions)
+      .set(suggestion)
+      .where(eq(opportunitySuggestions.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteOpportunitySuggestion(id: string): Promise<boolean> {
+    const result = await db.delete(opportunitySuggestions).where(eq(opportunitySuggestions.id, id));
     return result.rowCount ? result.rowCount > 0 : false;
   }
 }
