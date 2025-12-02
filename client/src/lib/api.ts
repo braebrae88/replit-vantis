@@ -86,6 +86,9 @@ export interface ActivityGuidanceResponse {
   outputChecklist: string[];
   emailInviteDraft: string;
   prepContent: PrepContent;
+  deliverableId: string;
+  deliverableName: string;
+  projectId: string;
 }
 
 export interface SoWBootstrapResponse {

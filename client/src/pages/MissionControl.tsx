@@ -1737,10 +1737,16 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
   learnings: "Key learnings and next steps from prototyping.",
 };
 
-function ArtifactsTab({ projectId }: { projectId: string }) {
+function ArtifactsTab({ projectId, initialArtifactId, onArtifactIdChange }: { projectId: string; initialArtifactId?: string | null; onArtifactIdChange?: (id: string | null) => void }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(initialArtifactId || null);
+  
+  useEffect(() => {
+    if (initialArtifactId) {
+      setSelectedArtifactId(initialArtifactId);
+    }
+  }, [initialArtifactId]);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   const [isDrafting, setIsDrafting] = useState(false);
   const [sectionContent, setSectionContent] = useState("");
@@ -4041,7 +4047,7 @@ interface ActivityGuidanceDrawerProps {
   projectId: string;
 }
 
-function ActivityGuidanceDrawer({ open, onOpenChange, activityId, action, projectId }: ActivityGuidanceDrawerProps) {
+function ActivityGuidanceDrawer({ open, onOpenChange, activityId, action, projectId, onNavigateToArtifacts }: ActivityGuidanceDrawerProps & { onNavigateToArtifacts?: (artifactId: string) => void }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [emailCopied, setEmailCopied] = useState(false);
@@ -4053,6 +4059,15 @@ function ActivityGuidanceDrawer({ open, onOpenChange, activityId, action, projec
     enabled: !!activityId && open,
     staleTime: 5 * 60 * 1000,
   });
+
+  const { data: artifacts = [] } = useQuery({
+    queryKey: ["artifacts", guidance?.projectId],
+    queryFn: () => api.artifacts.list(guidance!.projectId),
+    enabled: !!guidance?.projectId,
+    staleTime: Infinity,
+  });
+
+  const relatedArtifacts = artifacts.filter(a => a.deliverableId === guidance?.deliverableId);
 
   const handleCopyEmail = () => {
     if (guidance?.emailInviteDraft) {
@@ -4352,6 +4367,61 @@ function ActivityGuidanceDrawer({ open, onOpenChange, activityId, action, projec
                 </Button>
               </div>
 
+              {relatedArtifacts.length > 0 && (
+                <div className="p-4 border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg" data-testid="section-related-artifacts">
+                  <h4 className="font-semibold text-sm mb-3 flex items-center gap-2 text-green-900">
+                    <FileCheck className="w-4 h-4 text-green-600" />
+                    Related Artifacts
+                    <Badge variant="outline" className="ml-auto text-[10px] bg-green-100 text-green-700 border-green-300">
+                      {guidance?.deliverableName}
+                    </Badge>
+                  </h4>
+                  <div className="space-y-3">
+                    {relatedArtifacts.map(artifact => {
+                      const completeSections = artifact.sections.filter(s => s.status === "complete");
+                      const partialSections = artifact.sections.filter(s => s.status === "partial");
+                      const emptySections = artifact.sections.filter(s => s.status === "empty");
+                      const doneLabels = completeSections.map(s => s.label).join(", ");
+                      const remainingLabels = [...partialSections, ...emptySections].map(s => s.label).join(", ");
+                      
+                      return (
+                        <div 
+                          key={artifact.id}
+                          className="bg-white border border-green-200 rounded-lg p-3 shadow-sm"
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-medium text-sm text-slate-800">{artifact.title}</span>
+                            <span className="text-sm font-semibold text-green-700">{Math.round(artifact.completionPct)}% complete</span>
+                          </div>
+                          <Progress value={artifact.completionPct} className="h-1.5 mb-2" />
+                          <div className="text-xs text-slate-600 space-y-1">
+                            {doneLabels && (
+                              <p><span className="text-green-600 font-medium">Done:</span> {doneLabels}</p>
+                            )}
+                            {remainingLabels && (
+                              <p><span className="text-amber-600 font-medium">Remaining:</span> {remainingLabels}</p>
+                            )}
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="mt-2 gap-1.5 text-green-700 hover:text-green-800 hover:bg-green-100 p-0 h-auto"
+                            onClick={() => {
+                              onOpenChange(false);
+                              onNavigateToArtifacts?.(artifact.id);
+                            }}
+                            data-testid={`link-open-artifact-${artifact.id}`}
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            Open in Artifacts
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
             </div>
           ) : null}
         </ScrollArea>
@@ -4393,8 +4463,14 @@ export default function MissionControl() {
   const [highlightedRiskId, setHighlightedRiskId] = useState<string | null>(null);
   const [activityDetailOpen, setActivityDetailOpen] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<{ id: string; action: NextAction } | null>(null);
+  const [selectedArtifactIdFromGuidance, setSelectedArtifactIdFromGuidance] = useState<string | null>(null);
   const taskHighlightTimerRef = useRef<NodeJS.Timeout | null>(null);
   const riskHighlightTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const handleNavigateToArtifacts = useCallback((artifactId: string) => {
+    setSelectedArtifactIdFromGuidance(artifactId);
+    setActiveTab("artifacts");
+  }, []);
 
   const clearTaskHighlight = useCallback(() => {
     if (taskHighlightTimerRef.current) {
@@ -4595,7 +4671,11 @@ export default function MissionControl() {
               </TabsContent>
 
               <TabsContent value="artifacts" className="mt-0 h-full">
-                <ArtifactsTab projectId={project.id} />
+                <ArtifactsTab 
+                  projectId={project.id} 
+                  initialArtifactId={selectedArtifactIdFromGuidance}
+                  onArtifactIdChange={setSelectedArtifactIdFromGuidance}
+                />
               </TabsContent>
             </div>
 
@@ -4612,6 +4692,7 @@ export default function MissionControl() {
         activityId={selectedActivity?.id || null}
         action={selectedActivity?.action || null}
         projectId={project.id}
+        onNavigateToArtifacts={handleNavigateToArtifacts}
       />
     </MissionControlLayout>
   );

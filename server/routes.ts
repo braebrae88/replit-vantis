@@ -1902,7 +1902,12 @@ Please generate an impact story based on this information.`;
         };
       }
 
-      res.json(result);
+      res.json({
+        ...result,
+        deliverableId: deliverable.id,
+        deliverableName: deliverable.name,
+        projectId: project.id,
+      });
     } catch (error) {
       console.error("Failed to generate activity guidance:", error);
       res.status(500).json({ error: "Failed to generate activity guidance" });
