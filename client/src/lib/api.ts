@@ -28,6 +28,7 @@ import type {
   InsertEngagementInsight,
   OpportunitySeed,
   InsertOpportunitySeed,
+  OpportunitySuggestion,
   MetricSnapshot,
   InsertMetricSnapshot,
   Artifact,
@@ -950,6 +951,33 @@ export const api = {
   sidebar: {
     getItems: async (): Promise<SidebarItemsResponse> => {
       const response = await fetch("/api/sidebar/items");
+      return handleResponse(response);
+    },
+  },
+
+  // Opportunity Suggestions
+  opportunitySuggestions: {
+    list: async (status?: "PENDING" | "APPROVED" | "REJECTED"): Promise<OpportunitySuggestion[]> => {
+      const url = status ? `/api/opportunity-suggestions?status=${status}` : "/api/opportunity-suggestions";
+      const response = await fetch(url);
+      return handleResponse(response);
+    },
+    get: async (id: string): Promise<OpportunitySuggestion> => {
+      const response = await fetch(`/api/opportunity-suggestions/${id}`);
+      return handleResponse(response);
+    },
+    approve: async (id: string): Promise<{ suggestion: OpportunitySuggestion; proposal: ProposalWithChecklist }> => {
+      const response = await fetch(`/api/opportunity-suggestions/${id}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      return handleResponse(response);
+    },
+    reject: async (id: string): Promise<OpportunitySuggestion> => {
+      const response = await fetch(`/api/opportunity-suggestions/${id}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
       return handleResponse(response);
     },
   },
