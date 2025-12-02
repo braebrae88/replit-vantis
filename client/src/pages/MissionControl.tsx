@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
-import { api, ImpactStoryResponse } from "@/lib/api";
+import { api, ImpactStoryResponse, AccountGrowthResponse, RuleBasedSuggestion, EngagementIdea } from "@/lib/api";
 import type { Task, UseCase, Risk, Project, Event, NextAction, CompanionResponse, SuggestedTask, StatusReport, RoadmapResponse, RoadmapTask, RoadmapWeek, EngagementInsight, OpportunitySeed, Stakeholder, MetricSnapshot } from "@shared/schema";
 import { useState } from "react";
 import MissionControlLayout from "@/components/MissionControlLayout";
@@ -1217,6 +1217,175 @@ function ValueImpactTab({ projectId }: { projectId: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function AccountGrowthTab({ projectId }: { projectId: string }) {
+  const { data, isLoading, refetch, isFetching } = useQuery({
+    queryKey: ["accountGrowth", projectId],
+    queryFn: () => api.accountGrowth.get(projectId),
+    staleTime: 60000,
+    enabled: false,
+  });
+
+  const handleRefresh = () => {
+    refetch();
+  };
+
+  const getStatusColor = (status: string | null) => {
+    switch (status) {
+      case "qualified": return "bg-blue-100 text-blue-800";
+      case "proposed": return "bg-purple-100 text-purple-800";
+      case "won": return "bg-green-100 text-green-800";
+      case "lost": return "bg-gray-100 text-gray-800";
+      default: return "bg-yellow-100 text-yellow-800";
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+          <TrendingUp className="w-5 h-5 text-muted-foreground" />
+          Account Growth & Next Horizons
+        </h3>
+        <Button
+          onClick={handleRefresh}
+          disabled={isFetching}
+          data-testid="button-refresh-growth"
+        >
+          {isFetching ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Analysing...
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-4 h-4 mr-2" />
+              Generate Growth Ideas
+            </>
+          )}
+        </Button>
+      </div>
+
+      {!data && !isLoading && !isFetching && (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            Click "Generate Growth Ideas" to analyse this project and discover follow-on engagement opportunities.
+          </CardContent>
+        </Card>
+      )}
+
+      {(isLoading || isFetching) && (
+        <div className="space-y-4">
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
+        </div>
+      )}
+
+      {data && !isFetching && (
+        <div className="space-y-6">
+          {data.opportunitySeeds.length > 0 && (
+            <div className="space-y-4">
+              <h4 className="font-semibold flex items-center gap-2">
+                <Lightbulb className="w-4 h-4 text-yellow-500" />
+                Opportunity Seeds ({data.opportunitySeeds.length})
+              </h4>
+              <div className="grid gap-3 md:grid-cols-2">
+                {data.opportunitySeeds.map((seed) => (
+                  <Card key={seed.id} data-testid={`card-seed-${seed.id}`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <h5 className="font-medium text-sm">{seed.title}</h5>
+                        <Badge className={cn("text-xs", getStatusColor(seed.status))}>
+                          {seed.status}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground mb-2">{seed.description}</p>
+                      {seed.potentialValueEstimate && (
+                        <p className="text-xs text-green-600 font-medium">
+                          Est. Value: ${seed.potentialValueEstimate.toLocaleString()}
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {data.ruleBasedSuggestions.length > 0 && (
+            <div className="space-y-4">
+              <h4 className="font-semibold flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-orange-500" />
+                Pattern-Based Signals
+              </h4>
+              <div className="space-y-2">
+                {data.ruleBasedSuggestions.map((suggestion, idx) => (
+                  <Card key={idx} className="border-l-4 border-l-orange-400" data-testid={`card-rule-${idx}`}>
+                    <CardContent className="p-4">
+                      <h5 className="font-medium text-sm mb-1">{suggestion.title}</h5>
+                      <p className="text-sm text-muted-foreground mb-2">{suggestion.description}</p>
+                      <p className="text-xs text-orange-600">Trigger: {suggestion.trigger}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {data.aiIdeas.length > 0 && (
+            <div className="space-y-4">
+              <h4 className="font-semibold flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-purple-500" />
+                AI-Suggested Engagements
+              </h4>
+              <div className="grid gap-4">
+                {data.aiIdeas.map((idea, idx) => (
+                  <Card key={idx} className="border-l-4 border-l-purple-400" data-testid={`card-idea-${idx}`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-4 mb-3">
+                        <h5 className="font-semibold">{idea.title}</h5>
+                        <Badge variant="outline" className="shrink-0">
+                          {idea.sizeHint}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground mb-4">{idea.description}</p>
+                      
+                      <div className="grid gap-3 sm:grid-cols-2 text-sm">
+                        <div>
+                          <p className="text-xs font-medium text-muted-foreground mb-1">Client Value</p>
+                          <p className="text-green-700">{idea.clientValue}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium text-muted-foreground mb-1">Ideal Timing</p>
+                          <p>{idea.idealTiming}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-3 pt-3 border-t">
+                        <p className="text-xs text-muted-foreground">
+                          <span className="font-medium">Trigger: </span>
+                          {idea.triggerSummary}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {data.aiIdeas.length === 0 && data.ruleBasedSuggestions.length === 0 && data.opportunitySeeds.length === 0 && (
+            <Card>
+              <CardContent className="py-12 text-center text-muted-foreground">
+                No growth opportunities identified yet. Add more project data (use cases, deliverables, risks) to enable analysis.
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -3182,6 +3351,10 @@ export default function MissionControl() {
               <BarChart3 className="w-4 h-4 mr-2" />
               Value & Impact
             </TabsTrigger>
+            <TabsTrigger value="account-growth" data-testid="tab-account-growth">
+              <TrendingUp className="w-4 h-4 mr-2" />
+              Account Growth
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="summary">
@@ -3230,6 +3403,10 @@ export default function MissionControl() {
 
           <TabsContent value="value-impact">
             <ValueImpactTab projectId={project.id} />
+          </TabsContent>
+
+          <TabsContent value="account-growth">
+            <AccountGrowthTab projectId={project.id} />
           </TabsContent>
         </Tabs>
       </div>

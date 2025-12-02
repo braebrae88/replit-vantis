@@ -38,6 +38,27 @@ export interface ImpactStoryResponse {
   nextUnlockSuggestion: string;
 }
 
+export interface RuleBasedSuggestion {
+  title: string;
+  description: string;
+  trigger: string;
+}
+
+export interface EngagementIdea {
+  title: string;
+  description: string;
+  clientValue: string;
+  sizeHint: string;
+  triggerSummary: string;
+  idealTiming: string;
+}
+
+export interface AccountGrowthResponse {
+  ruleBasedSuggestions: RuleBasedSuggestion[];
+  aiIdeas: EngagementIdea[];
+  opportunitySeeds: OpportunitySeed[];
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: "Request failed" }));
@@ -616,6 +637,14 @@ export const api = {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
+      return handleResponse(response);
+    },
+  },
+
+  // Account Growth
+  accountGrowth: {
+    get: async (projectId: string): Promise<AccountGrowthResponse> => {
+      const response = await fetch(`/api/projects/${projectId}/account-growth`);
       return handleResponse(response);
     },
   },

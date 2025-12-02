@@ -53,6 +53,7 @@ import { VANTIS_SYSTEM_PROMPT } from "./ai/systemPrompt";
 import { EVENT_ANALYSIS_SYSTEM_PROMPT, EventAnalysisResult } from "./ai/eventAnalysisPrompt";
 import { STAKEHOLDER_ANALYSIS_SYSTEM_PROMPT, StakeholderAnalysisResult } from "./ai/stakeholderPrompt";
 import { IMPACT_STORY_SYSTEM_PROMPT, ImpactStoryResult } from "./ai/impactStoryPrompt";
+import { ACCOUNT_GROWTH_SYSTEM_PROMPT, AccountGrowthResult, RuleBasedSuggestion, EngagementIdea } from "./ai/accountGrowthPrompt";
 import OpenAI from "openai";
 
 export async function registerRoutes(
@@ -1395,6 +1396,187 @@ Please generate an impact story based on this information.`;
     } catch (error) {
       console.error("Failed to generate impact story:", error);
       res.status(500).json({ error: "Failed to generate impact story" });
+    }
+  });
+
+  // ============= ACCOUNT GROWTH =============
+
+  app.get("/api/projects/:id/account-growth", async (req, res) => {
+    try {
+      const projectId = req.params.id;
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const [
+        useCases,
+        deliverables,
+        risks,
+        opportunitySeeds,
+        metrics,
+        stakeholders,
+        insights,
+      ] = await Promise.all([
+        storage.getUseCases(projectId),
+        storage.getDeliverables(projectId),
+        storage.getRisks(projectId),
+        storage.getOpportunitySeeds(projectId),
+        storage.getMetricSnapshots(projectId),
+        storage.getStakeholders(projectId),
+        storage.getEngagementInsights(projectId),
+      ]);
+
+      const ruleBasedSuggestions: RuleBasedSuggestion[] = [];
+
+      const safePrototypes = deliverables.find(d => d.type === "safe_prototypes");
+      const pilotUseCases = useCases.filter(uc => uc.status === "implemented");
+      if (safePrototypes && safePrototypes.progress >= 75 && pilotUseCases.length > 0) {
+        ruleBasedSuggestions.push({
+          title: "Phase 2: Scale successful prototypes",
+          description: "SAFE prototypes are near completion with implemented use cases ready for broader rollout.",
+          trigger: `${safePrototypes.progress}% prototype completion, ${pilotUseCases.length} implemented use case(s)`,
+        });
+      }
+
+      const dataGovRisks = risks.filter(
+        r => r.category === "security" || r.category === "compliance" || 
+             r.title.toLowerCase().includes("data") || r.title.toLowerCase().includes("governance")
+      );
+      if (dataGovRisks.length >= 2) {
+        ruleBasedSuggestions.push({
+          title: "Governance & Data Readiness sprint",
+          description: "Multiple data and governance-related risks identified that may benefit from a focused sprint.",
+          trigger: `${dataGovRisks.length} data/governance risks identified`,
+        });
+      }
+
+      const seedsByTag: Record<string, typeof opportunitySeeds> = {};
+      opportunitySeeds.forEach(seed => {
+        const words = seed.title.toLowerCase().split(/\s+/);
+        words.forEach(word => {
+          if (word.length > 4) {
+            if (!seedsByTag[word]) seedsByTag[word] = [];
+            seedsByTag[word].push(seed);
+          }
+        });
+      });
+      const groupedSeeds = Object.entries(seedsByTag).filter(([_, seeds]) => seeds.length >= 2);
+      if (groupedSeeds.length > 0) {
+        const topGroup = groupedSeeds.sort((a, b) => b[1].length - a[1].length)[0];
+        ruleBasedSuggestions.push({
+          title: `Opportunity cluster: ${topGroup[0]}`,
+          description: `Multiple opportunity seeds share the theme "${topGroup[0]}" - consider a focused engagement.`,
+          trigger: `${topGroup[1].length} opportunity seeds with similar theme`,
+        });
+      }
+
+      const highInfluenceOpposed = stakeholders.filter(
+        s => s.influence === "high" && s.supportLevel === "opposed"
+      );
+      if (highInfluenceOpposed.length > 0) {
+        ruleBasedSuggestions.push({
+          title: "Stakeholder alignment workshop",
+          description: "High-influence stakeholders with opposition may benefit from dedicated alignment efforts.",
+          trigger: `${highInfluenceOpposed.length} high-influence opposed stakeholder(s)`,
+        });
+      }
+
+      const projectSummary = {
+        project: {
+          name: project.name,
+          phase: project.phase,
+          description: project.description,
+        },
+        useCases: useCases.map(uc => ({
+          name: uc.name,
+          status: uc.status,
+          valueHypothesis: uc.valueHypothesis,
+        })),
+        deliverables: deliverables.map(d => ({
+          name: d.name,
+          type: d.type,
+          status: d.status,
+          progress: d.progress,
+        })),
+        risks: risks.map(r => ({
+          title: r.title,
+          category: r.category,
+          status: r.status,
+          severity: r.likelihood * r.impact,
+        })),
+        opportunitySeeds: opportunitySeeds.map(s => ({
+          title: s.title,
+          description: s.description,
+          status: s.status,
+          potentialValue: s.potentialValueEstimate,
+        })),
+        metrics: metrics.map(m => ({
+          name: m.name,
+          baseline: m.baseline,
+          current: m.currentValue,
+          target: m.targetValue,
+          unit: m.unit,
+        })),
+        stakeholders: stakeholders.map(s => ({
+          name: s.name,
+          role: s.role,
+          influence: s.influence,
+          support: s.supportLevel,
+        })),
+        recentInsights: insights.slice(0, 5).map(i => ({
+          type: i.type,
+          title: i.title,
+          sentiment: i.sentiment,
+        })),
+        ruleBasedSuggestions: ruleBasedSuggestions,
+      };
+
+      const userPrompt = `Here is the current state of the client's activation program:
+
+${JSON.stringify(projectSummary, null, 2)}
+
+Based on this information, propose 2–5 concrete follow-on engagements that would help this client. Consider:
+- The maturity of current deliverables and use cases
+- Unaddressed risks and opportunity seeds
+- Stakeholder alignment needs
+- Metrics that show room for improvement
+- Any rule-based suggestions already identified
+
+Return your response as JSON.`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: ACCOUNT_GROWTH_SYSTEM_PROMPT },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.5,
+        max_tokens: 2000,
+        response_format: { type: "json_object" },
+      });
+
+      const responseText = completion.choices[0]?.message?.content;
+      if (!responseText) {
+        return res.status(500).json({ error: "No response from AI" });
+      }
+
+      let aiResult: AccountGrowthResult;
+      try {
+        aiResult = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error("Failed to parse AI response:", responseText);
+        return res.status(500).json({ error: "Failed to parse AI response" });
+      }
+
+      res.json({
+        ruleBasedSuggestions,
+        aiIdeas: aiResult.ideas || [],
+        opportunitySeeds,
+      });
+    } catch (error) {
+      console.error("Failed to generate account growth suggestions:", error);
+      res.status(500).json({ error: "Failed to generate account growth suggestions" });
     }
   });
 
