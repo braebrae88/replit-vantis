@@ -18,6 +18,7 @@ import {
   proposals,
   sowChecklistItems,
   opportunitySuggestions,
+  riskScoreAudits,
   type Project,
   type InsertProject,
   type UseCase,
@@ -58,6 +59,8 @@ import {
   type ProposalWithChecklist,
   type OpportunitySuggestion,
   type InsertOpportunitySuggestion,
+  type RiskScoreAudit,
+  type InsertRiskScoreAudit,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql } from "drizzle-orm";
@@ -101,6 +104,16 @@ export interface IStorage {
   createRisk(risk: InsertRisk): Promise<Risk>;
   updateRisk(id: string, risk: Partial<InsertRisk>): Promise<Risk | undefined>;
   deleteRisk(id: string): Promise<boolean>;
+
+  // Risk Score Audits
+  createRiskScoreAudit(audit: InsertRiskScoreAudit): Promise<RiskScoreAudit>;
+  getRiskScoreAudits(riskId: string): Promise<RiskScoreAudit[]>;
+  getProjectRiskScoringContext(projectId: string): Promise<{
+    recentInsights: EngagementInsight[];
+    recentEvents: Event[];
+    deliverables: Deliverable[];
+    openTasks: Task[];
+  }>;
 
   // Tasks
   getTasks(projectId?: string, useCaseId?: string): Promise<Task[]>;
@@ -377,6 +390,50 @@ export class DatabaseStorage implements IStorage {
   async deleteRisk(id: string): Promise<boolean> {
     const result = await db.delete(risks).where(eq(risks.id, id));
     return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  // Risk Score Audits
+  async createRiskScoreAudit(audit: InsertRiskScoreAudit): Promise<RiskScoreAudit> {
+    const [newAudit] = await db.insert(riskScoreAudits).values(audit).returning();
+    return newAudit;
+  }
+
+  async getRiskScoreAudits(riskId: string): Promise<RiskScoreAudit[]> {
+    return await db.select().from(riskScoreAudits)
+      .where(eq(riskScoreAudits.riskId, riskId))
+      .orderBy(sql`${riskScoreAudits.createdAt} DESC`);
+  }
+
+  async getProjectRiskScoringContext(projectId: string): Promise<{
+    recentInsights: EngagementInsight[];
+    recentEvents: Event[];
+    deliverables: Deliverable[];
+    openTasks: Task[];
+  }> {
+    const [recentInsights, recentEvents, projectDeliverables, openTasks] = await Promise.all([
+      db.select().from(engagementInsights)
+        .where(eq(engagementInsights.projectId, projectId))
+        .orderBy(sql`${engagementInsights.createdAt} DESC`)
+        .limit(10),
+      db.select().from(events)
+        .where(eq(events.projectId, projectId))
+        .orderBy(sql`${events.occurredAt} DESC`)
+        .limit(5),
+      db.select().from(deliverables)
+        .where(eq(deliverables.projectId, projectId)),
+      db.select().from(tasks)
+        .where(and(
+          eq(tasks.projectId, projectId),
+          sql`${tasks.status} != 'done'`
+        )),
+    ]);
+
+    return {
+      recentInsights,
+      recentEvents,
+      deliverables: projectDeliverables,
+      openTasks,
+    };
   }
 
   // Tasks
