@@ -1284,6 +1284,37 @@ function DeliverablesTab({ projectId }: { projectId: string }) {
   const { toast } = useToast();
   const [selectedDeliverableId, setSelectedDeliverableId] = useState<string | null>(null);
   const [expandedMilestones, setExpandedMilestones] = useState<Set<string>>(new Set());
+  const [expandedWorkshops, setExpandedWorkshops] = useState<Set<string>>(new Set());
+
+  const toggleWorkshopExpanded = (workshopKey: string) => {
+    setExpandedWorkshops((prev) => {
+      const next = new Set(prev);
+      if (next.has(workshopKey)) {
+        next.delete(workshopKey);
+      } else {
+        next.add(workshopKey);
+      }
+      return next;
+    });
+  };
+
+  const handleCopyWorkshopInvite = async (workshopKey: string) => {
+    if (!selectedDeliverableId) return;
+    try {
+      const invite = await api.deliverables.getWorkshopInvite(selectedDeliverableId, workshopKey);
+      await navigator.clipboard.writeText(invite.emailBody);
+      toast({
+        title: "Copied!",
+        description: "Workshop invite email text copied to clipboard.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to copy invite text",
+        variant: "destructive",
+      });
+    }
+  };
 
   const { data: deliverables = [], isLoading: deliverablesLoading } = useQuery({
     queryKey: ["deliverables", projectId],
@@ -1677,23 +1708,80 @@ function DeliverablesTab({ projectId }: { projectId: string }) {
 
                           {step.suggestedWorkshop && (
                             <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
-                              <div className="flex items-center gap-2 mb-2">
-                                <Users className="w-4 h-4 text-primary" />
-                                <span className="text-sm font-medium">{step.suggestedWorkshop.type}</span>
-                              </div>
-                              <p className="text-xs text-muted-foreground mb-2">
-                                {step.suggestedWorkshop.objective}
-                              </p>
-                              <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                                <span className="flex items-center gap-1">
-                                  <Clock className="w-3 h-3" />
-                                  {step.suggestedWorkshop.suggestedDuration}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <Users className="w-3 h-3" />
-                                  {step.suggestedWorkshop.participants.length} participants
-                                </span>
-                              </div>
+                              <button
+                                className="w-full text-left"
+                                onClick={() => toggleWorkshopExpanded(step.suggestedWorkshop!.key)}
+                                data-testid={`button-toggle-workshop-${step.suggestedWorkshop.key}`}
+                              >
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <Users className="w-4 h-4 text-primary" />
+                                    <span className="text-sm font-medium">{step.suggestedWorkshop.title}</span>
+                                  </div>
+                                  <ChevronDown
+                                    className={cn(
+                                      "w-4 h-4 text-muted-foreground transition-transform",
+                                      expandedWorkshops.has(step.suggestedWorkshop.key) && "rotate-180"
+                                    )}
+                                  />
+                                </div>
+                                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    {step.suggestedWorkshop.durationMinutes} min
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <Users className="w-3 h-3" />
+                                    {step.suggestedWorkshop.recommendedAttendees.length} attendees
+                                  </span>
+                                </div>
+                              </button>
+
+                              {expandedWorkshops.has(step.suggestedWorkshop.key) && (
+                                <div className="mt-3 pt-3 border-t border-primary/10 space-y-3">
+                                  <div>
+                                    <p className="text-xs font-medium text-muted-foreground mb-1">Objective:</p>
+                                    <p className="text-sm">{step.suggestedWorkshop.objective}</p>
+                                  </div>
+
+                                  <div>
+                                    <p className="text-xs font-medium text-muted-foreground mb-1">Agenda:</p>
+                                    <ul className="text-sm space-y-1">
+                                      {step.suggestedWorkshop.agenda.map((item, i) => (
+                                        <li key={i} className="flex gap-2">
+                                          <span className="text-muted-foreground font-mono text-xs whitespace-nowrap">{item.time}</span>
+                                          <span>{item.topic}</span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+
+                                  <div>
+                                    <p className="text-xs font-medium text-muted-foreground mb-1">Recommended Attendees:</p>
+                                    <div className="flex flex-wrap gap-1">
+                                      {step.suggestedWorkshop.recommendedAttendees.map((attendee, i) => (
+                                        <Badge key={i} variant="secondary" className="text-xs">
+                                          {attendee}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="gap-1 w-full"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCopyWorkshopInvite(step.suggestedWorkshop!.key);
+                                    }}
+                                    data-testid={`button-copy-workshop-invite-${step.suggestedWorkshop.key}`}
+                                  >
+                                    <Copy className="w-3 h-3" />
+                                    Copy email invite text
+                                  </Button>
+                                </div>
+                              )}
                             </div>
                           )}
                         </CardContent>

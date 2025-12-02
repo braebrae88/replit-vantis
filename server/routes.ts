@@ -34,7 +34,7 @@ import {
   type Milestone,
 } from "@shared/schema";
 import { fromError } from "zod-validation-error";
-import { instantiateDeliverableFromTemplate, DELIVERABLE_TEMPLATES, type DeliverableTemplate } from "./deliverableTemplates";
+import { instantiateDeliverableFromTemplate, DELIVERABLE_TEMPLATES, type DeliverableTemplate, type WorkshopTemplate } from "./deliverableTemplates";
 import {
   getDeliverableMetrics,
   onMilestoneStatusChange,
@@ -1481,73 +1481,27 @@ export async function registerRoutes(
           riskIfIgnored = "Low";
         }
 
-        const workshopTemplates: Record<string, GuidanceWorkshop> = {
-          activation_map: {
-            type: "Readiness & Sequencing Session",
-            objective: "Assess use case readiness and determine optimal activation sequence",
-            agenda: [
-              "Review identified use cases (15 min)",
-              "Score each use case on readiness dimensions (30 min)",
-              "Discuss interdependencies and sequencing (20 min)",
-              "Prioritize activation order (15 min)",
-            ],
-            suggestedDuration: "90 minutes",
-            participants: ["Product Owner", "Technical Lead", "Business Analyst", "Stakeholder Representative"],
-          },
-          safe_prototypes: {
-            type: "Prototype Validation Review",
-            objective: "Validate prototype design and gather clinical/domain feedback",
-            agenda: [
-              "Demo current prototype state (20 min)",
-              "Collect validation feedback from domain experts (30 min)",
-              "Identify gaps and required iterations (20 min)",
-              "Define acceptance criteria (15 min)",
-            ],
-            suggestedDuration: "90 minutes",
-            participants: ["Clinical/Domain Expert", "UX Designer", "Product Owner", "Technical Lead"],
-          },
-          ms_funding_nav: {
-            type: "Funding Strategy Workshop",
-            objective: "Align on Microsoft funding program strategy and application approach",
-            agenda: [
-              "Review available funding programs (Foundry, Frontier, ECIF) (20 min)",
-              "Assess project fit for each program (25 min)",
-              "Draft application narrative (20 min)",
-              "Assign ownership and timeline (10 min)",
-            ],
-            suggestedDuration: "75 minutes",
-            participants: ["Account Executive", "Project Lead", "Finance Representative", "Microsoft Relationship Manager"],
-          },
-          exec_framing: {
-            type: "Executive Validation Meeting",
-            objective: "Validate executive framing narrative and secure leadership alignment",
-            agenda: [
-              "Present draft executive narrative (15 min)",
-              "Gather executive feedback and concerns (20 min)",
-              "Refine messaging and positioning (15 min)",
-              "Confirm next steps and sponsorship (10 min)",
-            ],
-            suggestedDuration: "60 minutes",
-            participants: ["Executive Sponsor", "Project Lead", "Strategic Advisor"],
-          },
-          custom: {
-            type: "Discovery Workshop",
-            objective: "Clarify requirements and align on deliverable scope",
-            agenda: [
-              "Review current state and objectives (15 min)",
-              "Identify key requirements and constraints (20 min)",
-              "Define success criteria (15 min)",
-              "Assign next steps and ownership (10 min)",
-            ],
-            suggestedDuration: "60 minutes",
-            participants: ["Project Lead", "Subject Matter Expert", "Stakeholder"],
-          },
-        };
-
+        const template = DELIVERABLE_TEMPLATES.find(t => t.type === deliverable.type);
+        
         let suggestedWorkshop: GuidanceWorkshop | null = null;
         if (missingInputs.length > 0 && milestone.orderIndex <= 1 && !milestonesWithWorkshop.has(milestone.id)) {
-          suggestedWorkshop = workshopTemplates[deliverable.type] || workshopTemplates.custom;
-          milestonesWithWorkshop.add(milestone.id);
+          const workshopKey = milestone.suggestedWorkshopKey;
+          if (workshopKey && template?.workshopTemplates) {
+            const workshopTemplate = template.workshopTemplates.find(w => w.key === workshopKey);
+            if (workshopTemplate) {
+              suggestedWorkshop = {
+                key: workshopTemplate.key,
+                title: workshopTemplate.title,
+                objective: workshopTemplate.objective,
+                durationMinutes: workshopTemplate.durationMinutes,
+                recommendedAttendees: workshopTemplate.recommendedAttendees,
+                agenda: workshopTemplate.agenda,
+              };
+            }
+          }
+          if (suggestedWorkshop) {
+            milestonesWithWorkshop.add(milestone.id);
+          }
         }
 
         if (missingInputs.length > 0 || (activity.status === "not_started" && milestone.orderIndex === 0)) {
@@ -1651,6 +1605,73 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Failed to get deliverable metrics:", error);
       res.status(500).json({ error: "Failed to get deliverable metrics" });
+    }
+  });
+
+  app.get("/api/deliverables/:id/workshop-invite", async (req, res) => {
+    try {
+      const deliverable = await storage.getDeliverable(req.params.id);
+      if (!deliverable) {
+        return res.status(404).json({ error: "Deliverable not found" });
+      }
+
+      const workshopKey = req.query.key as string;
+      if (!workshopKey) {
+        return res.status(400).json({ error: "Workshop key is required" });
+      }
+
+      const template = DELIVERABLE_TEMPLATES.find(t => t.type === deliverable.type);
+      if (!template || !template.workshopTemplates) {
+        return res.status(404).json({ error: "No workshop templates found for this deliverable type" });
+      }
+
+      const workshopTemplate = template.workshopTemplates.find(w => w.key === workshopKey);
+      if (!workshopTemplate) {
+        return res.status(404).json({ error: "Workshop template not found" });
+      }
+
+      const project = await storage.getProject(deliverable.projectId);
+      const projectName = project?.name || "the project";
+
+      const agendaText = workshopTemplate.agenda
+        .map(item => `  - ${item.time}: ${item.topic}`)
+        .join("\n");
+
+      const attendeesText = workshopTemplate.recommendedAttendees.join(", ");
+
+      const durationText = workshopTemplate.durationMinutes >= 60
+        ? `${Math.floor(workshopTemplate.durationMinutes / 60)} hour${workshopTemplate.durationMinutes >= 120 ? "s" : ""}${workshopTemplate.durationMinutes % 60 > 0 ? ` ${workshopTemplate.durationMinutes % 60} minutes` : ""}`
+        : `${workshopTemplate.durationMinutes} minutes`;
+
+      const emailBody = `Subject: ${workshopTemplate.title} - ${projectName}
+
+Hi Team,
+
+I would like to invite you to a ${workshopTemplate.title} as part of our work on ${projectName}.
+
+Purpose:
+${workshopTemplate.objective}
+
+Duration: ${durationText}
+
+Proposed Agenda:
+${agendaText}
+
+Recommended Attendees: ${attendeesText}
+
+Please confirm your availability for this session. I will send a calendar invite once we have confirmed a suitable time.
+
+Best regards`;
+
+      res.json({
+        workshopKey: workshopTemplate.key,
+        workshopTitle: workshopTemplate.title,
+        emailSubject: `${workshopTemplate.title} - ${projectName}`,
+        emailBody,
+      });
+    } catch (error) {
+      console.error("Failed to generate workshop invite:", error);
+      res.status(500).json({ error: "Failed to generate workshop invite" });
     }
   });
 

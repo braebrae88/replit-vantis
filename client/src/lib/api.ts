@@ -452,6 +452,10 @@ export const api = {
       const response = await fetch(`/api/deliverables/${id}/metrics`);
       return handleResponse(response);
     },
+    getWorkshopInvite: async (id: string, workshopKey: string): Promise<WorkshopInvite> => {
+      const response = await fetch(`/api/deliverables/${id}/workshop-invite?key=${encodeURIComponent(workshopKey)}`);
+      return handleResponse(response);
+    },
     getMilestones: async (deliverableId: string): Promise<Milestone[]> => {
       const response = await fetch(`/api/deliverables/${deliverableId}/milestones`);
       return handleResponse(response);
@@ -472,4 +476,11 @@ export interface DeliverableMetrics {
   blockedMilestoneCount: number;
   totalActivities: number;
   completedActivities: number;
+}
+
+export interface WorkshopInvite {
+  workshopKey: string;
+  workshopTitle: string;
+  emailSubject: string;
+  emailBody: string;
 }

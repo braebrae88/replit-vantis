@@ -148,6 +148,7 @@ export const milestones = pgTable("milestones", {
   status: milestoneStatusEnum("status").notNull().default("not_started"),
   orderIndex: integer("order_index").notNull(),
   expectedHours: real("expected_hours"),
+  suggestedWorkshopKey: text("suggested_workshop_key"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -552,12 +553,18 @@ export interface RoadmapResponse {
 }
 
 // Deliverable Guidance Types (computed on-the-fly)
+export interface WorkshopAgendaItem {
+  time: string;
+  topic: string;
+}
+
 export interface GuidanceWorkshop {
-  type: string;
+  key: string;
+  title: string;
   objective: string;
-  agenda: string[];
-  suggestedDuration: string;
-  participants: string[];
+  durationMinutes: number;
+  recommendedAttendees: string[];
+  agenda: WorkshopAgendaItem[];
 }
 
 export interface GuidanceStep {

@@ -805,6 +805,7 @@ export async function instantiateDeliverableFromTemplate(
         status: "not_started",
         orderIndex: mIndex,
         expectedHours: milestoneTemplate.expectedHours ?? null,
+        suggestedWorkshopKey: milestoneTemplate.suggestedWorkshopKey ?? null,
       };
 
       const [milestone] = await tx.insert(milestones).values(milestoneData).returning();
