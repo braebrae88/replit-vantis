@@ -33,12 +33,16 @@ export const sectionStatusEnum = pgEnum("section_status", ["empty", "partial", "
 // Proposal Enums
 export const proposalStatusEnum = pgEnum("proposal_status", ["DRAFT", "IN_REVIEW", "SIGNED", "CONVERTED"]);
 
+// Project Status Enum
+export const projectStatusEnum = pgEnum("project_status", ["ACTIVE", "PROSPECTIVE"]);
+
 // Projects Table
 export const projects = pgTable("projects", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   clientName: text("client_name"),
   description: text("description").notNull(),
+  status: projectStatusEnum("status").notNull().default("ACTIVE"),
   phase: projectPhaseEnum("phase").notNull().default("discovery"),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
