@@ -552,8 +552,8 @@ export type NextActionUrgency = (typeof nextActionUrgencyEnum)[number];
 export const nextActionLinkedTypeEnum = ["TASK", "ACTIVITY", "WORKSHOP", "RISK", "DELIVERABLE", "OTHER"] as const;
 export type NextActionLinkedType = (typeof nextActionLinkedTypeEnum)[number];
 
-export const projectPhaseEnum = ["DISCOVER", "MAP", "PROTOTYPE", "UNLOCK"] as const;
-export type ProjectPhase = (typeof projectPhaseEnum)[number];
+export const vantisPhaseEnum = ["DISCOVER", "MAP", "PROTOTYPE", "UNLOCK"] as const;
+export type VantisPhase = (typeof vantisPhaseEnum)[number];
 
 export interface NextAction {
   id: string;
@@ -562,7 +562,7 @@ export interface NextAction {
   suggestedDueDate: string | null;
   linkedType: NextActionLinkedType;
   linkedId: string | null;
-  phase: ProjectPhase;
+  phase: VantisPhase;
   urgency: NextActionUrgency;
   severity: NextActionSeverity;
   category: "readiness" | "tasks" | "engagement" | "risks" | "deliverables" | "activities" | "stakeholders";
