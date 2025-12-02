@@ -1272,6 +1272,496 @@ function StatusReportTab({ projectId }: { projectId: string }) {
   );
 }
 
+const DELIVERABLE_TYPES = [
+  { value: "activation_map", label: "Activation Map", description: "Map use cases to workflows and readiness" },
+  { value: "safe_prototypes", label: "SAFE Prototypes", description: "Build and validate proof-of-concept prototypes" },
+  { value: "ms_funding_nav", label: "MS Funding Navigator", description: "Navigate Microsoft funding opportunities" },
+  { value: "exec_framing", label: "Executive Framing", description: "Frame the initiative for executive stakeholders" },
+] as const;
+
+function DeliverablesTab({ projectId }: { projectId: string }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [selectedDeliverableId, setSelectedDeliverableId] = useState<string | null>(null);
+  const [expandedMilestones, setExpandedMilestones] = useState<Set<string>>(new Set());
+
+  const { data: deliverables = [], isLoading: deliverablesLoading } = useQuery({
+    queryKey: ["deliverables", projectId],
+    queryFn: () => api.deliverables.list(projectId),
+  });
+
+  const selectedDeliverable = deliverables.find((d) => d.id === selectedDeliverableId);
+
+  const { data: guidance, isLoading: guidanceLoading } = useQuery({
+    queryKey: ["guidance", selectedDeliverableId],
+    queryFn: () => api.deliverables.getGuidance(selectedDeliverableId!),
+    enabled: !!selectedDeliverableId,
+  });
+
+  const { data: milestones = [] } = useQuery({
+    queryKey: ["milestones", selectedDeliverableId],
+    queryFn: () => api.deliverables.getMilestones(selectedDeliverableId!),
+    enabled: !!selectedDeliverableId,
+  });
+
+  const createDeliverableMutation = useMutation({
+    mutationFn: (type: string) => api.deliverables.create(projectId, type),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["deliverables", projectId] });
+      toast({ title: "Deliverable created", description: "The deliverable has been added to your project." });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to create deliverable",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const createTaskMutation = useMutation({
+    mutationFn: (data: { title: string; description: string; projectId: string }) =>
+      api.tasks.create({ ...data, status: "todo", priority: "medium" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks", projectId] });
+      toast({ title: "Task created", description: "The task has been added to your project." });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to create task",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleCreateTasks = (suggestedTasks: string[], activityName: string) => {
+    suggestedTasks.forEach((taskTitle) => {
+      createTaskMutation.mutate({
+        title: taskTitle,
+        description: `Task created from activity: ${activityName}`,
+        projectId,
+      });
+    });
+  };
+
+  const toggleMilestone = (milestoneId: string) => {
+    setExpandedMilestones((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(milestoneId)) {
+        newSet.delete(milestoneId);
+      } else {
+        newSet.add(milestoneId);
+      }
+      return newSet;
+    });
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "done":
+        return <Badge variant="default" className="bg-green-500 text-white">Done</Badge>;
+      case "in_progress":
+        return <Badge variant="default" className="bg-blue-500 text-white">In Progress</Badge>;
+      case "blocked":
+        return <Badge variant="destructive">Blocked</Badge>;
+      default:
+        return <Badge variant="secondary">Not Started</Badge>;
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "done":
+        return <CheckCircle2 className="w-4 h-4 text-green-500" />;
+      case "in_progress":
+        return <Clock className="w-4 h-4 text-blue-500" />;
+      case "blocked":
+        return <AlertTriangle className="w-4 h-4 text-red-500" />;
+      default:
+        return <CircleDot className="w-4 h-4 text-gray-400" />;
+    }
+  };
+
+  const getRiskBadge = (risk: string) => {
+    switch (risk) {
+      case "High":
+        return <Badge className="bg-red-100 text-red-800 border-red-200">High Risk</Badge>;
+      case "Medium":
+        return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">Medium Risk</Badge>;
+      default:
+        return <Badge className="bg-green-100 text-green-800 border-green-200">Low Risk</Badge>;
+    }
+  };
+
+  if (deliverablesLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold" data-testid="text-deliverables-title">Deliverables</h2>
+          <p className="text-sm text-muted-foreground">
+            Manage templated deliverables and track guided orchestration progress
+          </p>
+        </div>
+        <div className="relative">
+          <select
+            className="h-9 px-3 py-1 text-sm rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground cursor-pointer appearance-none pr-8"
+            onChange={(e) => {
+              if (e.target.value) {
+                createDeliverableMutation.mutate(e.target.value);
+                e.target.value = "";
+              }
+            }}
+            defaultValue=""
+            data-testid="select-add-deliverable"
+            disabled={createDeliverableMutation.isPending}
+          >
+            <option value="" disabled>
+              {createDeliverableMutation.isPending ? "Creating..." : "+ Add Deliverable"}
+            </option>
+            {DELIVERABLE_TYPES.map((type) => (
+              <option key={type.value} value={type.value}>
+                {type.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+        </div>
+      </div>
+
+      {deliverables.length === 0 ? (
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <Briefcase className="w-12 h-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium mb-2">No Deliverables Yet</h3>
+            <p className="text-sm text-muted-foreground text-center max-w-md">
+              Add a deliverable using the dropdown above to start tracking guided orchestration.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-3">
+          {deliverables.map((deliverable) => (
+            <Card
+              key={deliverable.id}
+              className={cn(
+                "cursor-pointer transition-all hover:border-primary/50",
+                selectedDeliverableId === deliverable.id && "border-primary ring-1 ring-primary"
+              )}
+              onClick={() => setSelectedDeliverableId(deliverable.id)}
+              data-testid={`card-deliverable-${deliverable.id}`}
+            >
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">{deliverable.name}</CardTitle>
+                  {getStatusBadge(deliverable.status)}
+                </div>
+                <CardDescription className="text-xs capitalize">
+                  {deliverable.type.replace(/_/g, " ")}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pb-4">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary transition-all"
+                      style={{ width: `${deliverable.progress}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-muted-foreground font-mono">
+                    {Math.round(deliverable.progress)}%
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-2 w-full gap-2"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedDeliverableId(deliverable.id);
+                  }}
+                  data-testid={`button-view-guidance-${deliverable.id}`}
+                >
+                  <Lightbulb className="w-4 h-4" />
+                  View Guidance
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {selectedDeliverable && (
+        <div className="grid gap-6 lg:grid-cols-5 mt-6">
+          <Card className="lg:col-span-2" data-testid="panel-milestones">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Target className="w-4 h-4" />
+                Milestones & Activities
+              </CardTitle>
+              <CardDescription>
+                {selectedDeliverable.name} - Progress Structure
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ScrollArea className="h-[400px] pr-4">
+                {milestones.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Loading milestones...</p>
+                ) : (
+                  <div className="space-y-2">
+                    {milestones
+                      .sort((a, b) => a.orderIndex - b.orderIndex)
+                      .map((milestone) => (
+                        <MilestoneItem
+                          key={milestone.id}
+                          milestone={milestone}
+                          isExpanded={expandedMilestones.has(milestone.id)}
+                          onToggle={() => toggleMilestone(milestone.id)}
+                          getStatusIcon={getStatusIcon}
+                          getStatusBadge={getStatusBadge}
+                        />
+                      ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-3" data-testid="panel-guidance">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-primary" />
+                Guided Steps
+              </CardTitle>
+              <CardDescription>
+                Recommended next actions based on current progress
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {guidanceLoading ? (
+                <div className="space-y-4">
+                  <Skeleton className="h-32 w-full" />
+                  <Skeleton className="h-32 w-full" />
+                </div>
+              ) : guidance ? (
+                <ScrollArea className="h-[400px] pr-4">
+                  <div className="space-y-4">
+                    {guidance.scopeFlags.length > 0 && (
+                      <div className="space-y-2">
+                        {guidance.scopeFlags.map((flag, i) => (
+                          <div
+                            key={i}
+                            className={cn(
+                              "p-3 rounded-lg border flex items-start gap-2",
+                              flag.severity === "critical"
+                                ? "bg-red-50 border-red-200 text-red-800"
+                                : "bg-yellow-50 border-yellow-200 text-yellow-800"
+                            )}
+                            data-testid={`alert-scope-flag-${i}`}
+                          >
+                            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                            <span className="text-sm">{flag.message}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {guidance.nextBestSteps.slice(0, 3).map((step, index) => (
+                      <Card key={step.activityId} className="bg-muted/30" data-testid={`card-guidance-step-${index}`}>
+                        <CardHeader className="pb-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <CardTitle className="text-sm font-medium">{step.activityName}</CardTitle>
+                              <CardDescription className="text-xs mt-1">
+                                Milestone: {step.milestoneName}
+                              </CardDescription>
+                            </div>
+                            {getRiskBadge(step.riskIfIgnored)}
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-3 pt-0">
+                          <p className="text-sm text-muted-foreground">{step.description}</p>
+
+                          {step.missingInputs.length > 0 && (
+                            <div>
+                              <p className="text-xs font-medium text-muted-foreground mb-1">Missing Inputs:</p>
+                              <div className="flex flex-wrap gap-1">
+                                {step.missingInputs.map((input, i) => (
+                                  <Badge key={i} variant="outline" className="text-xs">
+                                    {input}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {step.suggestedTasks.length > 0 && (
+                            <div>
+                              <p className="text-xs font-medium text-muted-foreground mb-1">Suggested Tasks:</p>
+                              <ul className="text-sm space-y-1">
+                                {step.suggestedTasks.map((task, i) => (
+                                  <li key={i} className="flex items-start gap-2">
+                                    <CheckCircle2 className="w-3 h-3 mt-1 text-muted-foreground shrink-0" />
+                                    <span>{task}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="mt-2 gap-1"
+                                onClick={() => handleCreateTasks(step.suggestedTasks, step.activityName)}
+                                disabled={createTaskMutation.isPending}
+                                data-testid={`button-create-tasks-${step.activityId}`}
+                              >
+                                <ListTodo className="w-3 h-3" />
+                                Create Tasks
+                              </Button>
+                            </div>
+                          )}
+
+                          {step.suggestedWorkshop && (
+                            <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Users className="w-4 h-4 text-primary" />
+                                <span className="text-sm font-medium">{step.suggestedWorkshop.type}</span>
+                              </div>
+                              <p className="text-xs text-muted-foreground mb-2">
+                                {step.suggestedWorkshop.objective}
+                              </p>
+                              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {step.suggestedWorkshop.suggestedDuration}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <Users className="w-3 h-3" />
+                                  {step.suggestedWorkshop.participants.length} participants
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
+
+                    {guidance.nextBestSteps.length === 0 && (
+                      <div className="text-center py-8">
+                        <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-3" />
+                        <h3 className="font-medium mb-1">All Clear!</h3>
+                        <p className="text-sm text-muted-foreground">{guidance.notes}</p>
+                      </div>
+                    )}
+
+                    {guidance.overallGaps.length > 0 && (
+                      <Card className="bg-muted/20">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-medium flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 text-yellow-600" />
+                            Overall Gaps ({guidance.overallGaps.length})
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <ul className="text-sm space-y-1 max-h-32 overflow-y-auto">
+                            {guidance.overallGaps.slice(0, 5).map((gap, i) => (
+                              <li key={i} className="flex items-start gap-2 text-muted-foreground">
+                                <CircleDot className="w-3 h-3 mt-1 shrink-0" />
+                                <span>{gap}</span>
+                              </li>
+                            ))}
+                            {guidance.overallGaps.length > 5 && (
+                              <li className="text-xs text-muted-foreground pl-5">
+                                ...and {guidance.overallGaps.length - 5} more
+                              </li>
+                            )}
+                          </ul>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+                </ScrollArea>
+              ) : (
+                <div className="text-center py-8">
+                  <Lightbulb className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+                  <p className="text-sm text-muted-foreground">Select a deliverable to view guidance</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MilestoneItem({
+  milestone,
+  isExpanded,
+  onToggle,
+  getStatusIcon,
+  getStatusBadge,
+}: {
+  milestone: { id: string; name: string; status: string; description: string };
+  isExpanded: boolean;
+  onToggle: () => void;
+  getStatusIcon: (status: string) => React.ReactNode;
+  getStatusBadge: (status: string) => React.ReactNode;
+}) {
+  const { data: activities = [] } = useQuery({
+    queryKey: ["activities", milestone.id],
+    queryFn: () => api.deliverables.getActivities(milestone.id),
+    enabled: isExpanded,
+  });
+
+  return (
+    <Collapsible open={isExpanded} onOpenChange={onToggle}>
+      <CollapsibleTrigger className="w-full">
+        <div className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 transition-colors">
+          <div className="flex items-center gap-2">
+            {getStatusIcon(milestone.status)}
+            <span className="text-sm font-medium text-left">{milestone.name}</span>
+          </div>
+          {isExpanded ? (
+            <ChevronUp className="w-4 h-4 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-muted-foreground" />
+          )}
+        </div>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="ml-6 mt-1 space-y-1 border-l-2 border-muted pl-3">
+          {activities
+            .sort((a, b) => a.orderIndex - b.orderIndex)
+            .map((activity) => (
+              <div
+                key={activity.id}
+                className="flex items-center gap-2 py-1.5 px-2 rounded text-sm hover:bg-muted/30"
+                data-testid={`activity-${activity.id}`}
+              >
+                {getStatusIcon(activity.status)}
+                <span className="flex-1 truncate" title={activity.name}>
+                  {activity.name}
+                </span>
+              </div>
+            ))}
+          {activities.length === 0 && (
+            <p className="text-xs text-muted-foreground py-1.5 px-2">Loading activities...</p>
+          )}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 function RoadmapTab({ projectId }: { projectId: string }) {
   const { data: roadmap, isLoading } = useQuery({
     queryKey: ["roadmap", projectId],
@@ -1630,6 +2120,10 @@ export default function MissionControl() {
               <Map className="w-4 h-4 mr-2" />
               Roadmap
             </TabsTrigger>
+            <TabsTrigger value="deliverables" data-testid="tab-deliverables">
+              <Briefcase className="w-4 h-4 mr-2" />
+              Deliverables
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="summary">
@@ -1658,6 +2152,10 @@ export default function MissionControl() {
 
           <TabsContent value="roadmap">
             <RoadmapTab projectId={project.id} />
+          </TabsContent>
+
+          <TabsContent value="deliverables">
+            <DeliverablesTab projectId={project.id} />
           </TabsContent>
         </Tabs>
       </div>
