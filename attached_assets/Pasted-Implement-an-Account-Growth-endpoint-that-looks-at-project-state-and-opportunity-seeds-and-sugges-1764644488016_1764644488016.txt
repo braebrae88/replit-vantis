@@ -1,0 +1,62 @@
+Implement an "Account Growth" endpoint that looks at project state and opportunity seeds, and suggests follow-on engagements.
+
+1) Add a backend endpoint:
+
+GET /projects/:id/account-growth
+
+- It should:
+  - Load:
+    - Project info (phase, dates),
+    - UseCases,
+    - Deliverables,
+    - Risks,
+    - OpportunitySeeds,
+    - MetricSnapshots,
+    - Stakeholders (influence/support),
+    - EngagementInsights.
+
+  - Apply some simple rule-based analysis first, e.g.:
+    - If SAFE_PROTOTYPES deliverable is near completion and some UseCases are 'IN_PILOT', add a candidate suggestion "Phase 2: Scale successful prototypes".
+    - If there are many data/governance-related risks, add a suggestion "Governance & Data Readiness sprint".
+    - If multiple OpportunitySeeds share the same tag (e.g. 'home care', 'discharge'), group them.
+
+  - Then pass a compact summary of this state into an LLM to propose 2–5 concrete "engagement ideas".
+
+2) Create src/ai/accountGrowthPrompt.ts with a system prompt like:
+
+"You are VANTIS Account Growth Partner. You see a snapshot of a single client's activation program: use cases, risks, metrics, opportunity seeds, stakeholders, and current deliverables.
+
+Your job:
+- Propose 2–5 concrete follow-on engagements or extensions that would genuinely help the client.
+- For each, specify:
+  - title,
+  - short description,
+  - value to the client,
+  - approximate size (e.g. '4–6 weeks', 'light-touch advisory', 'full program'),
+  - the trigger (which risks, metrics, or opportunity seeds it addresses),
+  - the ideal timing (e.g. 'immediately post-prototype', 'during FY planning').
+
+Return STRICT JSON:
+{
+  ideas: [
+    {
+      title: string,
+      description: string,
+      clientValue: string,
+      sizeHint: string,
+      triggerSummary: string,
+      idealTiming: string
+    }
+  ]
+}
+"
+
+3) Implement the endpoint so that it:
+   - Builds a concise JSON summary of the project state.
+   - Calls the LLM with that summary and the system prompt.
+   - Returns the parsed ideas as well as some of the simple rule-based suggestions.
+
+4) On the frontend:
+   - Add an "Account Growth" or "Next Horizons" tab per project that:
+     - Shows OpportunitySeeds,
+     - Shows the list of AI-suggested engagement ideas as cards.
