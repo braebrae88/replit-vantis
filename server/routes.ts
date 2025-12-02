@@ -78,6 +78,7 @@ import { TRANSCRIPT_INTAKE_SYSTEM_PROMPT, buildTranscriptIntakePrompt, Transcrip
 import { ACTIVITY_GUIDANCE_SYSTEM_PROMPT, buildActivityGuidanceUserPrompt } from "./ai/activityGuidancePrompt";
 import { SOW_BOOTSTRAP_SYSTEM_PROMPT, buildSoWBootstrapPrompt, SoWBootstrapResult } from "./ai/sowBootstrapPrompt";
 import { PROPOSAL_ANALYSIS_SYSTEM_PROMPT, buildProposalAnalysisUserPrompt, proposalAnalysisResultSchema, ProposalAnalysisResult } from "./ai/proposalAnalysisPrompt";
+import { RISK_SCORING_SYSTEM_PROMPT, buildRiskScoringPrompt, RiskScoringResult } from "./ai/riskScoringPrompt";
 import { callLLM, parseJSONResponse } from "./ai/client";
 import { convertProposalToProject } from "./proposalConversionService";
 import { computeNextActions } from "./nextActionsService";
@@ -1916,6 +1917,266 @@ Please generate an impact story based on this information.`;
     } catch (error) {
       console.error("Failed to generate impact story:", error);
       res.status(500).json({ error: "Failed to generate impact story" });
+    }
+  });
+
+  // ============= AI RISK SCORING =============
+
+  app.post("/api/ai/projects/:projectId/risks/score", async (req, res) => {
+    try {
+      const projectId = req.params.projectId;
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const projectRisks = await storage.getRisks(projectId);
+      if (projectRisks.length === 0) {
+        return res.json({ riskScores: [], message: "No risks to score" });
+      }
+
+      const context = await storage.getProjectRiskScoringContext(projectId);
+
+      const userPrompt = buildRiskScoringPrompt(
+        projectRisks.map(r => ({
+          id: r.id,
+          title: r.title,
+          category: r.category,
+          likelihood: r.likelihood,
+          impact: r.impact,
+          mitigation: r.mitigation,
+        })),
+        {
+          projectName: project.name,
+          projectDescription: project.description,
+          recentInsights: context.recentInsights.map(i => ({
+            id: i.id,
+            content: i.content,
+            type: i.type,
+            createdAt: i.createdAt,
+          })),
+          recentEvents: context.recentEvents.map(e => ({
+            id: e.id,
+            title: e.title,
+            description: e.description,
+            occurredAt: e.occurredAt,
+          })),
+          deliverables: context.deliverables.map(d => ({
+            id: d.id,
+            title: d.name,
+            status: d.status,
+          })),
+          openTasks: context.openTasks.map(t => ({
+            id: t.id,
+            title: t.title,
+            status: t.status,
+            priority: t.priority,
+          })),
+        }
+      );
+
+      const llmResult = await callLLM({
+        systemPrompt: RISK_SCORING_SYSTEM_PROMPT,
+        userContent: userPrompt,
+        temperature: 0.3,
+        maxTokens: 2000,
+        jsonMode: true,
+      });
+
+      if (!llmResult.success) {
+        return res.status(500).json({ error: llmResult.error });
+      }
+
+      const parseResult = parseJSONResponse<RiskScoringResult>(llmResult.content);
+      if (!parseResult.success || !parseResult.data) {
+        return res.status(500).json({ error: parseResult.error || "Failed to parse AI response" });
+      }
+
+      const scoringResult = parseResult.data;
+
+      for (const suggestion of scoringResult.riskScores) {
+        const risk = projectRisks.find(r => r.id === suggestion.riskId);
+        if (!risk) continue;
+
+        const clampedLikelihood = Math.min(5, Math.max(1, suggestion.suggestedLikelihood));
+        const clampedImpact = Math.min(5, Math.max(1, suggestion.suggestedImpact));
+
+        await storage.updateRisk(suggestion.riskId, {
+          aiSuggestedLikelihood: clampedLikelihood,
+          aiSuggestedImpact: clampedImpact,
+          aiRationale: suggestion.rationale,
+          aiEvidenceRefs: suggestion.evidenceRefs || [],
+        });
+
+        await storage.createRiskScoreAudit({
+          riskId: suggestion.riskId,
+          projectId,
+          action: "SUGGEST",
+          actor: "AI",
+          priorLikelihood: risk.likelihood,
+          priorImpact: risk.impact,
+          priorScore: risk.score || risk.likelihood * risk.impact,
+          newLikelihood: clampedLikelihood,
+          newImpact: clampedImpact,
+          newScore: clampedLikelihood * clampedImpact,
+          rationale: suggestion.rationale,
+          evidenceRefs: suggestion.evidenceRefs || [],
+        });
+      }
+
+      const updatedRisks = await storage.getRisks(projectId);
+      res.json({ 
+        success: true, 
+        risksScored: scoringResult.riskScores.length,
+        risks: updatedRisks,
+      });
+    } catch (error) {
+      console.error("Failed to score risks:", error);
+      res.status(500).json({ error: "Failed to score risks with AI" });
+    }
+  });
+
+  app.post("/api/risks/:riskId/accept-score", async (req, res) => {
+    try {
+      const { riskId } = req.params;
+      const risk = await storage.getRisk(riskId);
+      if (!risk) {
+        return res.status(404).json({ error: "Risk not found" });
+      }
+
+      if (risk.aiSuggestedLikelihood === null || risk.aiSuggestedImpact === null) {
+        return res.status(400).json({ error: "No AI suggestion available to accept" });
+      }
+
+      const newScore = risk.aiSuggestedLikelihood * risk.aiSuggestedImpact;
+
+      await storage.createRiskScoreAudit({
+        riskId,
+        projectId: risk.projectId,
+        action: "ACCEPT",
+        actor: "USER",
+        priorLikelihood: risk.likelihood,
+        priorImpact: risk.impact,
+        priorScore: risk.score || risk.likelihood * risk.impact,
+        newLikelihood: risk.aiSuggestedLikelihood,
+        newImpact: risk.aiSuggestedImpact,
+        newScore,
+        rationale: risk.aiRationale,
+        evidenceRefs: risk.aiEvidenceRefs || [],
+      });
+
+      const updatedRisk = await storage.updateRisk(riskId, {
+        likelihood: risk.aiSuggestedLikelihood,
+        impact: risk.aiSuggestedImpact,
+        score: newScore,
+        lastScoredAt: new Date(),
+        lastScoredBy: "AI",
+        aiSuggestedLikelihood: null,
+        aiSuggestedImpact: null,
+        aiRationale: null,
+        aiEvidenceRefs: null,
+      });
+
+      res.json({ success: true, risk: updatedRisk });
+    } catch (error) {
+      console.error("Failed to accept risk score:", error);
+      res.status(500).json({ error: "Failed to accept risk score" });
+    }
+  });
+
+  const editRiskScoreSchema = z.object({
+    likelihood: z.number().min(1).max(5),
+    impact: z.number().min(1).max(5),
+  });
+
+  app.post("/api/risks/:riskId/edit-score", async (req, res) => {
+    try {
+      const { riskId } = req.params;
+      const risk = await storage.getRisk(riskId);
+      if (!risk) {
+        return res.status(404).json({ error: "Risk not found" });
+      }
+
+      const parseResult = editRiskScoreSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ error: fromError(parseResult.error).toString() });
+      }
+
+      const { likelihood, impact } = parseResult.data;
+      const newScore = likelihood * impact;
+
+      await storage.createRiskScoreAudit({
+        riskId,
+        projectId: risk.projectId,
+        action: "EDIT",
+        actor: "USER",
+        priorLikelihood: risk.likelihood,
+        priorImpact: risk.impact,
+        priorScore: risk.score || risk.likelihood * risk.impact,
+        newLikelihood: likelihood,
+        newImpact: impact,
+        newScore,
+        rationale: `User edited scores from L${risk.likelihood}×I${risk.impact} to L${likelihood}×I${impact}`,
+        evidenceRefs: [],
+      });
+
+      const updatedRisk = await storage.updateRisk(riskId, {
+        likelihood,
+        impact,
+        score: newScore,
+        lastScoredAt: new Date(),
+        lastScoredBy: "USER",
+        aiSuggestedLikelihood: null,
+        aiSuggestedImpact: null,
+        aiRationale: null,
+        aiEvidenceRefs: null,
+      });
+
+      res.json({ success: true, risk: updatedRisk });
+    } catch (error) {
+      console.error("Failed to edit risk score:", error);
+      res.status(500).json({ error: "Failed to edit risk score" });
+    }
+  });
+
+  app.post("/api/risks/:riskId/reject-score", async (req, res) => {
+    try {
+      const { riskId } = req.params;
+      const risk = await storage.getRisk(riskId);
+      if (!risk) {
+        return res.status(404).json({ error: "Risk not found" });
+      }
+
+      if (risk.aiSuggestedLikelihood === null && risk.aiSuggestedImpact === null) {
+        return res.status(400).json({ error: "No AI suggestion available to reject" });
+      }
+
+      await storage.createRiskScoreAudit({
+        riskId,
+        projectId: risk.projectId,
+        action: "REJECT",
+        actor: "USER",
+        priorLikelihood: risk.likelihood,
+        priorImpact: risk.impact,
+        priorScore: risk.score || risk.likelihood * risk.impact,
+        newLikelihood: risk.likelihood,
+        newImpact: risk.impact,
+        newScore: risk.score || risk.likelihood * risk.impact,
+        rationale: "User rejected AI suggestion",
+        evidenceRefs: [],
+      });
+
+      const updatedRisk = await storage.updateRisk(riskId, {
+        aiSuggestedLikelihood: null,
+        aiSuggestedImpact: null,
+        aiRationale: null,
+        aiEvidenceRefs: null,
+      });
+
+      res.json({ success: true, risk: updatedRisk });
+    } catch (error) {
+      console.error("Failed to reject risk score:", error);
+      res.status(500).json({ error: "Failed to reject risk score" });
     }
   });
 
