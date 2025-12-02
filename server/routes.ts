@@ -79,6 +79,8 @@ import { ACTIVITY_GUIDANCE_SYSTEM_PROMPT, buildActivityGuidanceUserPrompt } from
 import { SOW_BOOTSTRAP_SYSTEM_PROMPT, buildSoWBootstrapPrompt, SoWBootstrapResult } from "./ai/sowBootstrapPrompt";
 import { PROPOSAL_ANALYSIS_SYSTEM_PROMPT, buildProposalAnalysisUserPrompt, proposalAnalysisResultSchema, ProposalAnalysisResult } from "./ai/proposalAnalysisPrompt";
 import { RISK_SCORING_SYSTEM_PROMPT, buildRiskScoringPrompt, RiskScoringResult } from "./ai/riskScoringPrompt";
+import { buildRiskReport, sectionsToMarkdown, markdownToHtml, type RiskReportData } from "./ai/reportBuilder";
+import { buildRiskReportSystemPrompt, buildRiskReportUserPrompt, parseRiskReportAIResponse, injectAIContentIntoReport, type RiskReportAIContext } from "./ai/riskReportPrompt";
 import { callLLM, parseJSONResponse } from "./ai/client";
 import { convertProposalToProject } from "./proposalConversionService";
 import { computeNextActions } from "./nextActionsService";
@@ -4079,6 +4081,282 @@ Best regards`;
     } catch (error) {
       console.error("Failed to clear test data:", error);
       res.status(500).json({ success: false, error: error instanceof Error ? error.message : "Unknown error" });
+    }
+  });
+
+  // ============= CLIENT REPORTS =============
+
+  app.get("/api/projects/:projectId/reports", async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      const reports = await storage.getClientReports(req.params.projectId);
+      res.json(reports);
+    } catch (error) {
+      console.error("Failed to fetch reports:", error);
+      res.status(500).json({ error: "Failed to fetch reports" });
+    }
+  });
+
+  app.get("/api/reports/:id", async (req, res) => {
+    try {
+      const report = await storage.getClientReport(req.params.id);
+      if (!report) {
+        return res.status(404).json({ error: "Report not found" });
+      }
+      res.json(report);
+    } catch (error) {
+      console.error("Failed to fetch report:", error);
+      res.status(500).json({ error: "Failed to fetch report" });
+    }
+  });
+
+  app.post("/api/projects/:projectId/reports/generate", async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const { periodDays = 14, useAI = true } = req.body;
+      const periodEnd = new Date();
+      const periodStart = new Date();
+      periodStart.setDate(periodStart.getDate() - periodDays);
+
+      const contextData = await storage.getReportContextData(req.params.projectId, periodStart, periodEnd);
+      
+      const reportData: RiskReportData = {
+        project: contextData.project,
+        periodStart,
+        periodEnd,
+        risks: contextData.risks,
+        recentEvents: contextData.recentEvents,
+        stakeholders: contextData.stakeholders,
+        deliverables: contextData.deliverables,
+      };
+
+      const builtReport = buildRiskReport(reportData);
+      let markdownContent = sectionsToMarkdown(builtReport.sections);
+      let emailSummary = `Risk report for ${project.name} covering ${periodDays} days.`;
+
+      if (useAI) {
+        try {
+          const aiContext: RiskReportAIContext = {
+            ...reportData,
+            riskSummary: builtReport.riskSummary,
+          };
+          
+          const systemPrompt = buildRiskReportSystemPrompt();
+          const userPrompt = buildRiskReportUserPrompt(aiContext);
+          
+          const llmResult = await callLLM({
+            systemPrompt,
+            userContent: userPrompt,
+          });
+          const parsed = parseRiskReportAIResponse(llmResult.content);
+          
+          if (parsed) {
+            markdownContent = injectAIContentIntoReport(markdownContent, parsed);
+            emailSummary = parsed.emailSummary || emailSummary;
+          }
+        } catch (aiError) {
+          console.error("AI enhancement failed, using base report:", aiError);
+        }
+      }
+
+      const htmlContent = markdownToHtml(markdownContent);
+
+      const report = await storage.createClientReport({
+        projectId: req.params.projectId,
+        type: "RISK_REPORT",
+        periodStart,
+        periodEnd,
+        contentMarkdown: markdownContent,
+        contentHtml: htmlContent,
+        emailSubject: builtReport.emailSubject,
+        emailSummary,
+        generatedBy: "AI",
+      });
+
+      res.status(201).json(report);
+    } catch (error) {
+      console.error("Failed to generate report:", error);
+      res.status(500).json({ error: "Failed to generate report" });
+    }
+  });
+
+  app.patch("/api/reports/:id", async (req, res) => {
+    try {
+      const { contentMarkdown, approvedBy } = req.body;
+      
+      const updates: Record<string, unknown> = {};
+      
+      if (contentMarkdown) {
+        updates.contentMarkdown = contentMarkdown;
+        updates.contentHtml = markdownToHtml(contentMarkdown);
+      }
+      
+      if (approvedBy) {
+        updates.approvedAt = new Date();
+        updates.approvedBy = approvedBy;
+      }
+      
+      const report = await storage.updateClientReport(req.params.id, updates);
+      if (!report) {
+        return res.status(404).json({ error: "Report not found" });
+      }
+      res.json(report);
+    } catch (error) {
+      console.error("Failed to update report:", error);
+      res.status(500).json({ error: "Failed to update report" });
+    }
+  });
+
+  app.delete("/api/reports/:id", async (req, res) => {
+    try {
+      const success = await storage.deleteClientReport(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Report not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Failed to delete report:", error);
+      res.status(500).json({ error: "Failed to delete report" });
+    }
+  });
+
+  // ============= REPORT SUGGESTIONS =============
+
+  app.get("/api/projects/:projectId/report-suggestions", async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      const status = req.query.status as "PENDING" | "GENERATED" | "DISMISSED" | undefined;
+      const suggestions = await storage.getReportSuggestions(req.params.projectId, status);
+      res.json(suggestions);
+    } catch (error) {
+      console.error("Failed to fetch report suggestions:", error);
+      res.status(500).json({ error: "Failed to fetch report suggestions" });
+    }
+  });
+
+  app.get("/api/projects/:projectId/report-suggestions/pending-count", async (req, res) => {
+    try {
+      const count = await storage.getPendingReportSuggestionCount(req.params.projectId);
+      res.json({ count });
+    } catch (error) {
+      console.error("Failed to get pending count:", error);
+      res.status(500).json({ error: "Failed to get pending count" });
+    }
+  });
+
+  app.post("/api/report-suggestions/:id/generate", async (req, res) => {
+    try {
+      const suggestion = await storage.getReportSuggestion(req.params.id);
+      if (!suggestion) {
+        return res.status(404).json({ error: "Suggestion not found" });
+      }
+      if (suggestion.status !== "PENDING") {
+        return res.status(400).json({ error: "Suggestion is not pending" });
+      }
+
+      const project = await storage.getProject(suggestion.projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const periodEnd = new Date();
+      const periodStart = new Date();
+      periodStart.setDate(periodStart.getDate() - 14);
+
+      const contextData = await storage.getReportContextData(suggestion.projectId, periodStart, periodEnd);
+      
+      const reportData: RiskReportData = {
+        project: contextData.project,
+        periodStart,
+        periodEnd,
+        risks: contextData.risks,
+        recentEvents: contextData.recentEvents,
+        stakeholders: contextData.stakeholders,
+        deliverables: contextData.deliverables,
+      };
+
+      const builtReport = buildRiskReport(reportData);
+      let markdownContent = sectionsToMarkdown(builtReport.sections);
+      let emailSummary = `Risk report for ${project.name}.`;
+
+      try {
+        const aiContext: RiskReportAIContext = {
+          ...reportData,
+          riskSummary: builtReport.riskSummary,
+        };
+        
+        const systemPrompt = buildRiskReportSystemPrompt();
+        const userPrompt = buildRiskReportUserPrompt(aiContext);
+        
+        const llmResult = await callLLM({
+          systemPrompt,
+          userContent: userPrompt,
+        });
+        const parsed = parseRiskReportAIResponse(llmResult.content);
+        
+        if (parsed) {
+          markdownContent = injectAIContentIntoReport(markdownContent, parsed);
+          emailSummary = parsed.emailSummary || emailSummary;
+        }
+      } catch (aiError) {
+        console.error("AI enhancement failed:", aiError);
+      }
+
+      const htmlContent = markdownToHtml(markdownContent);
+
+      const report = await storage.createClientReport({
+        projectId: suggestion.projectId,
+        type: "RISK_REPORT",
+        periodStart,
+        periodEnd,
+        contentMarkdown: markdownContent,
+        contentHtml: htmlContent,
+        emailSubject: builtReport.emailSubject,
+        emailSummary,
+        generatedBy: "AI",
+      });
+
+      await storage.updateReportSuggestion(req.params.id, {
+        status: "GENERATED",
+        generatedReportId: report.id,
+      });
+
+      res.status(201).json({ suggestion: await storage.getReportSuggestion(req.params.id), report });
+    } catch (error) {
+      console.error("Failed to generate report from suggestion:", error);
+      res.status(500).json({ error: "Failed to generate report from suggestion" });
+    }
+  });
+
+  app.post("/api/report-suggestions/:id/dismiss", async (req, res) => {
+    try {
+      const suggestion = await storage.getReportSuggestion(req.params.id);
+      if (!suggestion) {
+        return res.status(404).json({ error: "Suggestion not found" });
+      }
+      if (suggestion.status !== "PENDING") {
+        return res.status(400).json({ error: "Suggestion is not pending" });
+      }
+
+      const updated = await storage.updateReportSuggestion(req.params.id, {
+        status: "DISMISSED",
+        dismissedAt: new Date(),
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Failed to dismiss suggestion:", error);
+      res.status(500).json({ error: "Failed to dismiss suggestion" });
     }
   });
 
