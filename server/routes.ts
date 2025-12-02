@@ -1710,15 +1710,31 @@ User Question: ${message}`;
         createdInsights.push(insight);
       }
 
+      const createdSuggestions: any[] = [];
       for (const hint of analysis.opportunityHints || []) {
-        const seed = await storage.createOpportunitySeed({
-          projectId: eventProjectId,
-          title: hint.length > 100 ? hint.substring(0, 97) + "..." : hint,
-          description: hint,
-          source: "meeting",
-          status: "idea",
-        });
-        createdSeeds.push(seed);
+        if (typeof hint === 'string') {
+          const suggestion = await storage.createOpportunitySuggestion({
+            projectId: eventProjectId,
+            title: hint.length > 100 ? hint.substring(0, 97) + "..." : hint,
+            clientName: null,
+            rationale: hint,
+            confidence: 0.5,
+            sourceEventId: event.id,
+            status: "PENDING",
+          });
+          createdSuggestions.push(suggestion);
+        } else if (hint && typeof hint === 'object' && hint.title && hint.rationale) {
+          const suggestion = await storage.createOpportunitySuggestion({
+            projectId: eventProjectId,
+            title: hint.title,
+            clientName: hint.clientName || null,
+            rationale: hint.rationale,
+            confidence: typeof hint.confidence === 'number' ? hint.confidence : 0.5,
+            sourceEventId: event.id,
+            status: "PENDING",
+          });
+          createdSuggestions.push(suggestion);
+        }
       }
 
       let artifactPopulation = { artifactsUpdated: 0, sectionsUpdated: 0 };
@@ -1733,8 +1749,10 @@ User Question: ${message}`;
         analysis,
         createdInsights: createdInsights.length,
         createdSeeds: createdSeeds.length,
+        createdSuggestions: createdSuggestions.length,
         insights: createdInsights,
         seeds: createdSeeds,
+        suggestions: createdSuggestions,
         artifactPopulation,
       });
     } catch (error) {
@@ -2096,6 +2114,33 @@ Please generate an impact story based on this information.`;
         return (severityOrder[a.severity] || 3) - (severityOrder[b.severity] || 3);
       });
 
+      const createdSuggestions: any[] = [];
+      for (const hint of analysis.opportunityHints || []) {
+        if (typeof hint === 'string') {
+          const suggestion = await storage.createOpportunitySuggestion({
+            projectId,
+            title: hint.length > 100 ? hint.substring(0, 97) + "..." : hint,
+            clientName: null,
+            rationale: hint,
+            confidence: 0.5,
+            sourceEventId: createdEvent.id,
+            status: "PENDING",
+          });
+          createdSuggestions.push(suggestion);
+        } else if (hint && typeof hint === 'object' && hint.title && hint.rationale) {
+          const suggestion = await storage.createOpportunitySuggestion({
+            projectId,
+            title: hint.title,
+            clientName: hint.clientName || null,
+            rationale: hint.rationale,
+            confidence: typeof hint.confidence === 'number' ? hint.confidence : 0.5,
+            sourceEventId: createdEvent.id,
+            status: "PENDING",
+          });
+          createdSuggestions.push(suggestion);
+        }
+      }
+
       let artifactPopulation = { artifactsUpdated: 0, sectionsUpdated: 0 };
       try {
         const insightPopulation = await populateArtifactsFromInsights(projectId, createdInsights);
@@ -2122,6 +2167,7 @@ Please generate an impact story based on this information.`;
         tasks: createdTasks,
         risks: createdRisks,
         stakeholders: updatedStakeholders,
+        opportunitySuggestions: createdSuggestions,
         nextActions: allNextActions,
         transcriptSuggestedActions: transcriptNextActions,
         summary: analysis.summary,
