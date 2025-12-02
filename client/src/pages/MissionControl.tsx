@@ -4471,13 +4471,9 @@ function ActivityGuidanceDrawer({ open, onOpenChange, activityId, action, projec
                               {doc.suggestedSource}
                             </Badge>
                             {doc.artifactId && (
-                              <a 
-                                href={`/artifacts/${doc.artifactId}`}
-                                className="text-xs text-indigo-600 hover:text-indigo-800 hover:underline font-medium ml-1"
-                                data-testid={`link-open-artifact-${i}`}
-                              >
-                                Open artifact
-                              </a>
+                              <Badge variant="outline" className="text-[10px] bg-green-50 text-green-700 border-green-200 ml-1">
+                                Linked
+                              </Badge>
                             )}
                           </div>
                         ))}
