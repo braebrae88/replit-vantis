@@ -81,6 +81,7 @@ export function CreateProjectDialog({ project, trigger, onSuccess }: CreateProje
     mutationFn: api.projects.create,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["sidebar-items"] });
       setOpen(false);
       form.reset();
       toast({
@@ -103,6 +104,7 @@ export function CreateProjectDialog({ project, trigger, onSuccess }: CreateProje
       api.projects.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["sidebar-items"] });
       queryClient.invalidateQueries({ queryKey: ["project", project?.id] });
       setOpen(false);
       toast({

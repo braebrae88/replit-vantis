@@ -46,6 +46,25 @@ export interface ImpactStoryResponse {
   nextUnlockSuggestion: string;
 }
 
+export interface SidebarCurrentItem {
+  id: string;
+  title: string;
+  type: "project";
+}
+
+export interface SidebarProspectiveItem {
+  id: string;
+  title: string;
+  clientName: string | null;
+  type: "proposal";
+  status: string;
+}
+
+export interface SidebarItemsResponse {
+  current: SidebarCurrentItem[];
+  prospective: SidebarProspectiveItem[];
+}
+
 export interface RuleBasedSuggestion {
   title: string;
   description: string;
@@ -923,6 +942,14 @@ export const api = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isComplete }),
       });
+      return handleResponse(response);
+    },
+  },
+
+  // Sidebar Items
+  sidebar: {
+    getItems: async (): Promise<SidebarItemsResponse> => {
+      const response = await fetch("/api/sidebar/items");
       return handleResponse(response);
     },
   },

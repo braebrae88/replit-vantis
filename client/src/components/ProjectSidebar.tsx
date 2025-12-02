@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "wouter";
-import { api } from "@/lib/api";
-import { Folder, Plus, Building2, ChevronDown, ChevronRight, Briefcase } from "lucide-react";
+import { Link, useParams, useLocation } from "wouter";
+import { api, SidebarCurrentItem, SidebarProspectiveItem } from "@/lib/api";
+import { Folder, Plus, Building2, ChevronDown, ChevronRight, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -23,11 +23,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { Project } from "@shared/schema";
+import { Badge } from "@/components/ui/badge";
 
-function QuickProspectiveDialog({ 
+function QuickProposalDialog({ 
   open, 
   onOpenChange 
 }: { 
@@ -40,22 +41,23 @@ function QuickProspectiveDialog({
   const queryClient = useQueryClient();
 
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; clientName: string; description: string; status: "ACTIVE" | "PROSPECTIVE" }) => 
-      api.projects.create(data),
+    mutationFn: (data: { title: string; clientName: string; rawText?: string }) => 
+      api.proposals.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["sidebar-items"] });
+      queryClient.invalidateQueries({ queryKey: ["proposals"] });
       onOpenChange(false);
       setClientName("");
       setTitle("");
       toast({
-        title: "Opportunity Created",
-        description: "New prospective opportunity has been added.",
+        title: "Proposal Created",
+        description: "New proposal has been added to your pipeline.",
       });
     },
     onError: (error) => {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to create opportunity",
+        description: error instanceof Error ? error.message : "Failed to create proposal",
         variant: "destructive",
       });
     },
@@ -72,10 +74,8 @@ function QuickProspectiveDialog({
     }
 
     createMutation.mutate({
-      name: title,
+      title: title,
       clientName: clientName,
-      description: `Prospective opportunity: ${title}`,
-      status: "PROSPECTIVE",
     });
   };
 
@@ -83,9 +83,9 @@ function QuickProspectiveDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>New Prospective Opportunity</DialogTitle>
+          <DialogTitle>New Proposal</DialogTitle>
           <DialogDescription>
-            Add a new opportunity to track in your pipeline.
+            Add a new proposal to track in your pipeline.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
@@ -96,17 +96,17 @@ function QuickProspectiveDialog({
               value={clientName}
               onChange={(e) => setClientName(e.target.value)}
               placeholder="e.g., Ontario Health"
-              data-testid="input-prospective-client"
+              data-testid="input-proposal-client"
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="title">Opportunity Title</Label>
+            <Label htmlFor="title">Proposal Title</Label>
             <Input
               id="title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g., AI Readiness Assessment"
-              data-testid="input-prospective-title"
+              data-testid="input-proposal-title"
             />
           </div>
         </div>
@@ -117,9 +117,9 @@ function QuickProspectiveDialog({
           <Button 
             onClick={handleSubmit} 
             disabled={createMutation.isPending}
-            data-testid="button-create-prospective"
+            data-testid="button-create-proposal"
           >
-            {createMutation.isPending ? "Creating..." : "Create Opportunity"}
+            {createMutation.isPending ? "Creating..." : "Create Proposal"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -127,19 +127,9 @@ function QuickProspectiveDialog({
   );
 }
 
-interface ProjectItemProps {
-  project: Project;
-  isSelected: boolean;
-  isProspective?: boolean;
-}
-
-function ProjectItem({ project, isSelected, isProspective }: ProjectItemProps) {
-  const href = isProspective 
-    ? `/projects/${project.id}` 
-    : `/projects/${project.id}`;
-
+function CurrentItem({ item, isSelected }: { item: SidebarCurrentItem; isSelected: boolean }) {
   return (
-    <Link href={href}>
+    <Link href={`/projects/${item.id}`}>
       <div
         className={cn(
           "p-2.5 rounded-lg cursor-pointer transition-all group",
@@ -147,38 +137,25 @@ function ProjectItem({ project, isSelected, isProspective }: ProjectItemProps) {
             ? "bg-primary/10 border border-primary/20"
             : "hover:bg-muted/50 border border-transparent"
         )}
-        data-testid={`sidebar-project-${project.id}`}
+        data-testid={`sidebar-project-${item.id}`}
       >
         <div className="flex items-start gap-2.5">
           <div className={cn(
             "w-7 h-7 rounded-md flex items-center justify-center shrink-0",
             isSelected ? "bg-primary/20" : "bg-muted"
           )}>
-            {isProspective ? (
-              <Briefcase className={cn(
-                "w-3.5 h-3.5",
-                isSelected ? "text-primary" : "text-muted-foreground"
-              )} />
-            ) : (
-              <Folder className={cn(
-                "w-3.5 h-3.5",
-                isSelected ? "text-primary" : "text-muted-foreground"
-              )} />
-            )}
+            <Folder className={cn(
+              "w-3.5 h-3.5",
+              isSelected ? "text-primary" : "text-muted-foreground"
+            )} />
           </div>
           <div className="flex-1 min-w-0">
             <p className={cn(
               "font-medium text-sm truncate leading-tight",
               isSelected ? "text-primary" : "text-foreground"
             )}>
-              {project.name}
+              {item.title}
             </p>
-            {project.clientName && (
-              <div className="flex items-center gap-1 mt-0.5 text-xs text-muted-foreground">
-                <Building2 className="w-3 h-3 shrink-0" />
-                <span className="truncate">{project.clientName}</span>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -186,16 +163,69 @@ function ProjectItem({ project, isSelected, isProspective }: ProjectItemProps) {
   );
 }
 
-interface SectionProps {
-  title: string;
-  projects: Project[];
-  selectedProjectId?: string;
-  defaultOpen?: boolean;
-  isProspective?: boolean;
-  onAddClick?: () => void;
+function ProspectiveItem({ item, isSelected }: { item: SidebarProspectiveItem; isSelected: boolean }) {
+  const statusColors: Record<string, string> = {
+    DRAFT: "bg-gray-500/10 text-gray-500",
+    IN_REVIEW: "bg-yellow-500/10 text-yellow-600",
+    SIGNED: "bg-green-500/10 text-green-600",
+  };
+
+  return (
+    <Link href={`/proposals/${item.id}`}>
+      <div
+        className={cn(
+          "p-2.5 rounded-lg cursor-pointer transition-all group",
+          isSelected
+            ? "bg-primary/10 border border-primary/20"
+            : "hover:bg-muted/50 border border-transparent"
+        )}
+        data-testid={`sidebar-proposal-${item.id}`}
+      >
+        <div className="flex items-start gap-2.5">
+          <div className={cn(
+            "w-7 h-7 rounded-md flex items-center justify-center shrink-0",
+            isSelected ? "bg-primary/20" : "bg-muted"
+          )}>
+            <FileText className={cn(
+              "w-3.5 h-3.5",
+              isSelected ? "text-primary" : "text-muted-foreground"
+            )} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className={cn(
+              "font-medium text-sm truncate leading-tight",
+              isSelected ? "text-primary" : "text-foreground"
+            )}>
+              {item.title}
+            </p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              {item.clientName && (
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Building2 className="w-3 h-3 shrink-0" />
+                  <span className="truncate">{item.clientName}</span>
+                </div>
+              )}
+              <Badge 
+                variant="secondary" 
+                className={cn("text-[10px] px-1 py-0 h-4", statusColors[item.status] || "")}
+              >
+                {item.status.replace("_", " ")}
+              </Badge>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
 }
 
-function Section({ title, projects, selectedProjectId, defaultOpen = true, isProspective, onAddClick }: SectionProps) {
+interface CurrentSectionProps {
+  items: SidebarCurrentItem[];
+  selectedId?: string;
+  defaultOpen?: boolean;
+}
+
+function CurrentSection({ items, selectedId, defaultOpen = true }: CurrentSectionProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
@@ -207,8 +237,52 @@ function Section({ title, projects, selectedProjectId, defaultOpen = true, isPro
           ) : (
             <ChevronRight className="w-3.5 h-3.5" />
           )}
-          {title}
-          <span className="text-[10px] font-normal ml-1">({projects.length})</span>
+          Current
+          <span className="text-[10px] font-normal ml-1">({items.length})</span>
+        </CollapsibleTrigger>
+      </div>
+      <CollapsibleContent>
+        <div className="space-y-0.5 px-1">
+          {items.length > 0 ? (
+            items.map((item) => (
+              <CurrentItem
+                key={item.id}
+                item={item}
+                isSelected={selectedId === item.id}
+              />
+            ))
+          ) : (
+            <p className="text-xs text-muted-foreground px-2 py-2">
+              No active projects
+            </p>
+          )}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+interface ProspectiveSectionProps {
+  items: SidebarProspectiveItem[];
+  selectedId?: string;
+  defaultOpen?: boolean;
+  onAddClick?: () => void;
+}
+
+function ProspectiveSection({ items, selectedId, defaultOpen = true, onAddClick }: ProspectiveSectionProps) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+
+  return (
+    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      <div className="flex items-center justify-between px-2 py-1.5">
+        <CollapsibleTrigger className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors">
+          {isOpen ? (
+            <ChevronDown className="w-3.5 h-3.5" />
+          ) : (
+            <ChevronRight className="w-3.5 h-3.5" />
+          )}
+          Prospective
+          <span className="text-[10px] font-normal ml-1">({items.length})</span>
         </CollapsibleTrigger>
         {onAddClick && (
           <Button
@@ -219,7 +293,7 @@ function Section({ title, projects, selectedProjectId, defaultOpen = true, isPro
               e.stopPropagation();
               onAddClick();
             }}
-            data-testid="button-add-prospective"
+            data-testid="button-add-proposal"
           >
             <Plus className="w-3.5 h-3.5" />
           </Button>
@@ -227,18 +301,17 @@ function Section({ title, projects, selectedProjectId, defaultOpen = true, isPro
       </div>
       <CollapsibleContent>
         <div className="space-y-0.5 px-1">
-          {projects.length > 0 ? (
-            projects.map((project) => (
-              <ProjectItem
-                key={project.id}
-                project={project}
-                isSelected={selectedProjectId === project.id}
-                isProspective={isProspective}
+          {items.length > 0 ? (
+            items.map((item) => (
+              <ProspectiveItem
+                key={item.id}
+                item={item}
+                isSelected={selectedId === item.id}
               />
             ))
           ) : (
             <p className="text-xs text-muted-foreground px-2 py-2">
-              {isProspective ? "No opportunities yet" : "No active projects"}
+              No proposals yet
             </p>
           )}
         </div>
@@ -249,16 +322,16 @@ function Section({ title, projects, selectedProjectId, defaultOpen = true, isPro
 
 export function ProjectSidebar() {
   const params = useParams();
-  const selectedProjectId = params.id;
+  const [location] = useLocation();
   const [showQuickCreate, setShowQuickCreate] = useState(false);
 
-  const { data: projects, isLoading } = useQuery({
-    queryKey: ["projects"],
-    queryFn: api.projects.list,
+  const { data: sidebarData, isLoading } = useQuery({
+    queryKey: ["sidebar-items"],
+    queryFn: api.sidebar.getItems,
   });
 
-  const activeProjects = projects?.filter(p => p.status === "ACTIVE" || !p.status) ?? [];
-  const prospectiveProjects = projects?.filter(p => p.status === "PROSPECTIVE") ?? [];
+  const selectedProjectId = location.startsWith("/projects/") ? params.id : undefined;
+  const selectedProposalId = location.startsWith("/proposals/") ? params.id : undefined;
 
   return (
     <div className="flex flex-col h-full bg-card border-r border-border">
@@ -280,18 +353,15 @@ export function ProjectSidebar() {
             ))
           ) : (
             <>
-              <Section
-                title="Current"
-                projects={activeProjects}
-                selectedProjectId={selectedProjectId}
+              <CurrentSection
+                items={sidebarData?.current ?? []}
+                selectedId={selectedProjectId}
                 defaultOpen={true}
               />
-              <Section
-                title="Prospective"
-                projects={prospectiveProjects}
-                selectedProjectId={selectedProjectId}
+              <ProspectiveSection
+                items={sidebarData?.prospective ?? []}
+                selectedId={selectedProposalId}
                 defaultOpen={true}
-                isProspective={true}
                 onAddClick={() => setShowQuickCreate(true)}
               />
             </>
@@ -299,7 +369,7 @@ export function ProjectSidebar() {
         </div>
       </ScrollArea>
 
-      <QuickProspectiveDialog 
+      <QuickProposalDialog 
         open={showQuickCreate} 
         onOpenChange={setShowQuickCreate} 
       />

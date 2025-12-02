@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type ProposalAnalysisResponse } from "@/lib/api";
 import type { ProposalWithChecklist, InsertProposal } from "@shared/schema";
@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useParams } from "wouter";
 import {
   Dialog,
   DialogContent,
@@ -62,6 +62,7 @@ const STATUS_BADGES: Record<string, { label: string; variant: "default" | "secon
 };
 
 export default function Proposals() {
+  const params = useParams<{ id?: string }>();
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [selectedProposalId, setSelectedProposalId] = useState<string | null>(null);
   const [formData, setFormData] = useState<FormData>({
@@ -78,6 +79,13 @@ export default function Proposals() {
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
 
+  useEffect(() => {
+    if (params.id) {
+      setSelectedProposalId(params.id);
+      setViewMode("detail");
+    }
+  }, [params.id]);
+
   const { data: proposals = [], isLoading: loadingProposals } = useQuery({
     queryKey: ["proposals"],
     queryFn: () => api.proposals.list(),
@@ -93,6 +101,7 @@ export default function Proposals() {
     mutationFn: (data: InsertProposal) => api.proposals.create(data),
     onSuccess: (proposal) => {
       queryClient.invalidateQueries({ queryKey: ["proposals"] });
+      queryClient.invalidateQueries({ queryKey: ["sidebar-items"] });
       setShowNewDialog(false);
       setFormData({
         clientName: "",
@@ -157,6 +166,7 @@ export default function Proposals() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["proposals"] });
       queryClient.invalidateQueries({ queryKey: ["proposals", selectedProposalId] });
+      queryClient.invalidateQueries({ queryKey: ["sidebar-items"] });
       toast({
         title: "Status Updated",
         description: "SOW has been marked as signed.",
@@ -177,6 +187,7 @@ export default function Proposals() {
       queryClient.invalidateQueries({ queryKey: ["proposals"] });
       queryClient.invalidateQueries({ queryKey: ["proposals", selectedProposalId] });
       queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["sidebar-items"] });
       setLocation(`/projects/${result.projectId}?from=sow`);
     },
     onError: (error) => {

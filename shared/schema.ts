@@ -597,6 +597,13 @@ export const insertProposalSchema = createInsertSchema(proposals).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+}).extend({
+  rawText: z.string().nullish(),
+  status: z.enum(["DRAFT", "IN_REVIEW", "SIGNED", "CONVERTED", "LOST"]).optional(),
+  estimatedStart: z.date().nullish(),
+  estimatedEnd: z.date().nullish(),
+  rateInfo: z.string().nullish(),
+  convertedProjectId: z.string().nullish(),
 });
 
 export const updateProposalSchema = insertProposalSchema.partial().extend({

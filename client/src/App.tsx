@@ -15,6 +15,7 @@ function Router() {
       <Route path="/project/:id" component={MissionControl} />
       <Route path="/timesheet" component={Timesheet} />
       <Route path="/proposals" component={Proposals} />
+      <Route path="/proposals/:id" component={Proposals} />
       <Route component={NotFound} />
     </Switch>
   );
