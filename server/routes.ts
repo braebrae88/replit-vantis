@@ -1287,6 +1287,99 @@ ${section.content || 'None'}`;
     }
   });
 
+  // ============= OPPORTUNITY SUGGESTIONS =============
+
+  app.get("/api/opportunity-suggestions", async (req, res) => {
+    try {
+      const status = req.query.status as "PENDING" | "APPROVED" | "REJECTED" | undefined;
+      const suggestions = await storage.getOpportunitySuggestions(status);
+      res.json(suggestions);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch opportunity suggestions" });
+    }
+  });
+
+  app.get("/api/opportunity-suggestions/:id", async (req, res) => {
+    try {
+      const suggestion = await storage.getOpportunitySuggestion(req.params.id);
+      if (!suggestion) {
+        return res.status(404).json({ error: "Opportunity suggestion not found" });
+      }
+      res.json(suggestion);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch opportunity suggestion" });
+    }
+  });
+
+  app.post("/api/opportunity-suggestions/:id/approve", async (req, res) => {
+    try {
+      const suggestion = await storage.getOpportunitySuggestion(req.params.id);
+      if (!suggestion) {
+        return res.status(404).json({ error: "Opportunity suggestion not found" });
+      }
+
+      if (suggestion.status !== "PENDING") {
+        return res.status(400).json({ error: "Only pending suggestions can be approved" });
+      }
+
+      // Create a new proposal from the suggestion
+      const newProposal = await storage.createProposal({
+        title: suggestion.title,
+        clientName: suggestion.clientName,
+        description: suggestion.rationale,
+        status: "DRAFT",
+      });
+
+      // Create default checklist items for the new proposal
+      const checklistItems: InsertSowChecklistItem[] = DEFAULT_SOW_CHECKLIST.map((item, index) => ({
+        proposalId: newProposal.id,
+        label: item.label,
+        description: item.description,
+        isComplete: false,
+        orderIndex: index,
+      }));
+      await storage.createManySowChecklistItems(checklistItems);
+
+      // Update the suggestion status and link to the new proposal
+      const updatedSuggestion = await storage.updateOpportunitySuggestion(req.params.id, {
+        status: "APPROVED",
+        approvedProposalId: newProposal.id,
+      });
+
+      // Get full proposal with checklist
+      const fullProposal = await storage.getProposal(newProposal.id);
+
+      res.json({
+        suggestion: updatedSuggestion,
+        proposal: fullProposal,
+      });
+    } catch (error) {
+      console.error("Failed to approve opportunity suggestion:", error);
+      res.status(500).json({ error: "Failed to approve opportunity suggestion" });
+    }
+  });
+
+  app.post("/api/opportunity-suggestions/:id/reject", async (req, res) => {
+    try {
+      const suggestion = await storage.getOpportunitySuggestion(req.params.id);
+      if (!suggestion) {
+        return res.status(404).json({ error: "Opportunity suggestion not found" });
+      }
+
+      if (suggestion.status !== "PENDING") {
+        return res.status(400).json({ error: "Only pending suggestions can be rejected" });
+      }
+
+      const updatedSuggestion = await storage.updateOpportunitySuggestion(req.params.id, {
+        status: "REJECTED",
+      });
+
+      res.json(updatedSuggestion);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to reject opportunity suggestion" });
+    }
+  });
+
   // ============= AI PROPOSAL ANALYSIS =============
 
   app.post("/api/ai/proposals/:id/analyse", async (req, res) => {
