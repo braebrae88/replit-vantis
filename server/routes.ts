@@ -1001,6 +1001,117 @@ export async function registerRoutes(
     }
   });
 
+  // ============= AI ARTIFACT SECTION DRAFT =============
+
+  app.post("/api/ai/artifacts/:artifactId/sections/:sectionId/draft", async (req, res) => {
+    try {
+      const { artifactId, sectionId } = req.params;
+      const { projectId } = req.body;
+
+      if (!projectId) {
+        return res.status(400).json({ error: "Project ID is required" });
+      }
+
+      const artifact = await storage.getArtifact(artifactId);
+      if (!artifact) {
+        return res.status(404).json({ error: "Artifact not found" });
+      }
+
+      const sections = await storage.getArtifactSections(artifactId);
+      const section = sections.find(s => s.id === sectionId);
+      if (!section) {
+        return res.status(404).json({ error: "Section not found" });
+      }
+
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Gather context for drafting
+      const [insights, useCases, risks, stakeholders] = await Promise.all([
+        storage.getEngagementInsights(projectId),
+        storage.getUseCases(projectId),
+        storage.getRisks(projectId),
+        storage.getStakeholders(projectId),
+      ]);
+
+      const sectionDescriptions: Record<string, string> = {
+        context: "High-level project context, objectives, and background information.",
+        key_workflows: "Key business workflows identified for AI activation.",
+        readiness_summary: "Organizational readiness assessment across dimensions.",
+        dependencies: "Technical and organizational dependencies for activation.",
+        activation_sequence: "Recommended sequence for activating AI initiatives.",
+        risks_mitigations: "Identified risks and proposed mitigation strategies.",
+        headline_story: "Executive summary and key narrative for stakeholders.",
+        key_metrics: "Key performance indicators and success metrics.",
+        risks: "Identified project risks and concerns.",
+        asks_decisions: "Asks from leadership and pending decisions.",
+        next_90_days: "Near-term roadmap and planned activities.",
+        funding_overview: "Overview of funding sources and requirements.",
+        budget_breakdown: "Detailed budget allocation and estimates.",
+        approval_path: "Required approvals and stakeholder sign-offs.",
+        timeline: "Project timeline and key milestones.",
+        stakeholder_signoffs: "Stakeholder commitments and approvals.",
+        prototype_scope: "Scope definition for SAFE prototypes.",
+        technical_approach: "Technical implementation approach and architecture.",
+        data_requirements: "Data needs and integration requirements.",
+        validation_criteria: "Success criteria for prototype validation.",
+        learnings: "Key learnings and next steps from prototyping.",
+      };
+
+      const sectionDescription = sectionDescriptions[section.key] || "Content for this section.";
+
+      const systemPrompt = `You are VANTIS, an AI assistant helping to draft content for project artifacts.
+Your task is to draft content for the "${section.label}" section of the "${artifact.title}" artifact.
+
+Section description: ${sectionDescription}
+
+Guidelines:
+- Write clear, professional content appropriate for the section
+- Use bullet points where appropriate for clarity
+- Base content on the project context and insights provided
+- Keep content focused and actionable
+- Use 3-5 bullet points or 2-3 paragraphs as appropriate`;
+
+      const userPrompt = `Project: ${project.name}
+Client: ${project.clientName || 'N/A'}
+Description: ${project.description}
+Phase: ${project.phase}
+
+Use Cases:
+${useCases.map(uc => `- ${uc.name}: ${uc.problemStatement || 'No description'}`).join('\n')}
+
+Recent Insights:
+${insights.slice(0, 10).map(i => `- [${i.type}] ${i.title}: ${i.summary}`).join('\n')}
+
+Risks:
+${risks.slice(0, 5).map(r => `- ${r.title} (${r.category}): ${r.mitigation || 'No mitigation defined'}`).join('\n')}
+
+Key Stakeholders:
+${stakeholders.slice(0, 5).map(s => `- ${s.name} (${s.role || 'No role'}) - ${s.supportLevel || 'Unknown support'}`).join('\n')}
+
+Please draft content for the "${section.label}" section. Existing content (if any):
+${section.content || 'None'}`;
+
+      const llmResult = await callLLM({
+        systemPrompt,
+        userContent: userPrompt,
+        temperature: 0.5,
+        maxTokens: 1000,
+      });
+
+      if (!llmResult.success) {
+        return res.status(500).json({ error: llmResult.error });
+      }
+
+      res.json({ draft: llmResult.content });
+    } catch (error) {
+      console.error("Failed to generate section draft:", error);
+      res.status(500).json({ error: "Failed to generate draft" });
+    }
+  });
+
   // ============= AI COMPANION =============
 
   app.post("/api/ai/companion", async (req, res) => {

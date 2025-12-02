@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { api, ImpactStoryResponse, AccountGrowthResponse, RuleBasedSuggestion, EngagementIdea, ActivityGuidanceResponse, SoWBootstrapResponse } from "@/lib/api";
-import type { Task, UseCase, Risk, Project, Event, NextAction, CompanionResponse, SuggestedTask, StatusReport, RoadmapResponse, RoadmapTask, RoadmapWeek, EngagementInsight, OpportunitySeed, Stakeholder, MetricSnapshot } from "@shared/schema";
+import type { Task, UseCase, Risk, Project, Event, NextAction, CompanionResponse, SuggestedTask, StatusReport, RoadmapResponse, RoadmapTask, RoadmapWeek, EngagementInsight, OpportunitySeed, Stakeholder, MetricSnapshot, ArtifactWithSections, ArtifactSection, Deliverable } from "@shared/schema";
 import { useState, useEffect, useCallback, useRef } from "react";
 import MissionControlLayout from "@/components/MissionControlLayout";
 import { CreateProjectDialog } from "@/components/CreateProjectDialog";
@@ -48,6 +48,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Progress } from "@/components/ui/progress";
+import {
   Building2,
   Calendar,
   Pencil,
@@ -82,6 +90,13 @@ import {
   BarChart3,
   Plus,
   Trash2,
+  FileCheck,
+  Circle,
+  CircleCheck,
+  CircleDashed,
+  Package,
+  ExternalLink,
+  Wand2,
 } from "lucide-react";
 
 function formatDate(date: Date | string | null | undefined): string {
@@ -1694,6 +1709,395 @@ function AccountGrowthTab({ projectId }: { projectId: string }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+const SECTION_DESCRIPTIONS: Record<string, string> = {
+  context: "High-level project context, objectives, and background information.",
+  key_workflows: "Key business workflows identified for AI activation.",
+  readiness_summary: "Organizational readiness assessment across dimensions.",
+  dependencies: "Technical and organizational dependencies for activation.",
+  activation_sequence: "Recommended sequence for activating AI initiatives.",
+  risks_mitigations: "Identified risks and proposed mitigation strategies.",
+  headline_story: "Executive summary and key narrative for stakeholders.",
+  key_metrics: "Key performance indicators and success metrics.",
+  risks: "Identified project risks and concerns.",
+  asks_decisions: "Asks from leadership and pending decisions.",
+  next_90_days: "Near-term roadmap and planned activities.",
+  funding_overview: "Overview of funding sources and requirements.",
+  budget_breakdown: "Detailed budget allocation and estimates.",
+  approval_path: "Required approvals and stakeholder sign-offs.",
+  timeline: "Project timeline and key milestones.",
+  stakeholder_signoffs: "Stakeholder commitments and approvals.",
+  prototype_scope: "Scope definition for SAFE prototypes.",
+  technical_approach: "Technical implementation approach and architecture.",
+  data_requirements: "Data needs and integration requirements.",
+  validation_criteria: "Success criteria for prototype validation.",
+  learnings: "Key learnings and next steps from prototyping.",
+};
+
+function ArtifactsTab({ projectId }: { projectId: string }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+  const [isDrafting, setIsDrafting] = useState(false);
+  const [sectionContent, setSectionContent] = useState("");
+
+  const { data: artifacts = [], isLoading } = useQuery({
+    queryKey: ["artifacts", projectId],
+    queryFn: () => api.artifacts.list(projectId),
+    staleTime: Infinity,
+  });
+
+  const { data: deliverables = [] } = useQuery({
+    queryKey: ["deliverables", projectId],
+    queryFn: () => api.deliverables.list(projectId),
+    staleTime: Infinity,
+  });
+
+  const selectedArtifact = artifacts.find(a => a.id === selectedArtifactId);
+  const selectedSection = selectedArtifact?.sections.find(s => s.id === selectedSectionId);
+  const linkedDeliverable = selectedArtifact?.deliverableId 
+    ? deliverables.find(d => d.id === selectedArtifact.deliverableId)
+    : null;
+
+  useEffect(() => {
+    if (selectedSection) {
+      setSectionContent(selectedSection.content || "");
+    }
+  }, [selectedSection]);
+
+  const updateSectionMutation = useMutation({
+    mutationFn: ({ sectionId, data }: { sectionId: string; data: { content?: string; status?: string } }) =>
+      api.artifactSections.update(sectionId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["artifacts", projectId] });
+      toast({ title: "Section Updated", description: "Content saved successfully." });
+    },
+    onError: (error) => {
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to update section", variant: "destructive" });
+    },
+  });
+
+  const handleSaveSection = () => {
+    if (!selectedSectionId) return;
+    const newStatus = sectionContent.trim() 
+      ? (sectionContent.trim().split('\n').filter(l => l.trim()).length >= 3 ? "complete" : "partial")
+      : "empty";
+    updateSectionMutation.mutate({ 
+      sectionId: selectedSectionId, 
+      data: { content: sectionContent, status: newStatus } 
+    });
+  };
+
+  const handleAskVantisToDraft = async () => {
+    if (!selectedSectionId || !selectedArtifact) return;
+    setIsDrafting(true);
+    try {
+      const response = await fetch(`/api/ai/artifacts/${selectedArtifact.id}/sections/${selectedSectionId}/draft`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId }),
+      });
+      
+      if (!response.ok) {
+        throw new Error("Failed to generate draft");
+      }
+      
+      const result = await response.json();
+      const newContent = sectionContent 
+        ? `${sectionContent}\n\n--- AI Draft ---\n${result.draft}`
+        : result.draft;
+      setSectionContent(newContent);
+      toast({ title: "Draft Generated", description: "VANTIS has proposed content for this section." });
+    } catch (error) {
+      toast({ 
+        title: "Draft Failed", 
+        description: error instanceof Error ? error.message : "Failed to generate draft",
+        variant: "destructive" 
+      });
+    } finally {
+      setIsDrafting(false);
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "complete":
+        return <CircleCheck className="w-4 h-4 text-green-600" />;
+      case "partial":
+        return <CircleDashed className="w-4 h-4 text-yellow-600" />;
+      default:
+        return <Circle className="w-4 h-4 text-gray-400" />;
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "complete":
+        return "bg-green-100 text-green-800";
+      case "partial":
+        return "bg-yellow-100 text-yellow-800";
+      default:
+        return "bg-gray-100 text-gray-600";
+    }
+  };
+
+  const getTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      activation_map_doc: "Activation Map",
+      exec_brief: "Executive Brief",
+      funding_nav_pack: "Funding Pack",
+      safe_prototype_doc: "SAFE Prototype",
+      stakeholder_map: "Stakeholder Map",
+      value_scorecard_doc: "Value Scorecard",
+      custom: "Custom",
+    };
+    return labels[type] || type;
+  };
+
+  const getCompletedSections = (artifact: ArtifactWithSections) => {
+    const complete = artifact.sections.filter(s => s.status === "complete").length;
+    return { complete, total: artifact.sections.length };
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <FileCheck className="w-5 h-5 text-muted-foreground" />
+            Artifacts
+          </h3>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map(i => (
+            <Skeleton key={i} className="h-40 w-full" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+          <FileCheck className="w-5 h-5 text-muted-foreground" />
+          Artifacts ({artifacts.length})
+        </h3>
+      </div>
+
+      {artifacts.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            <Package className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
+            <p>No artifacts yet. Artifacts are created automatically when you add deliverables to your project.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {artifacts.map(artifact => {
+            const { complete, total } = getCompletedSections(artifact);
+            const linkedDel = artifact.deliverableId 
+              ? deliverables.find(d => d.id === artifact.deliverableId)
+              : null;
+            
+            return (
+              <Card 
+                key={artifact.id} 
+                className="cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => setSelectedArtifactId(artifact.id)}
+                data-testid={`card-artifact-${artifact.id}`}
+              >
+                <CardHeader className="pb-2">
+                  <div className="flex items-start justify-between">
+                    <CardTitle className="text-base">{artifact.title}</CardTitle>
+                    <Badge variant="outline" className="text-xs">
+                      {getTypeLabel(artifact.type)}
+                    </Badge>
+                  </div>
+                  {linkedDel && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Package className="w-3 h-3" />
+                      {linkedDel.name}
+                    </p>
+                  )}
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Completion</span>
+                      <span className="font-medium">{Math.round(artifact.completionPct)}%</span>
+                    </div>
+                    <Progress value={artifact.completionPct} className="h-2" />
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">
+                      {complete}/{total} sections complete
+                    </span>
+                    <div className="flex gap-0.5">
+                      {artifact.sections.slice(0, 6).map(section => (
+                        <div
+                          key={section.id}
+                          className={cn(
+                            "w-2 h-2 rounded-full",
+                            section.status === "complete" ? "bg-green-500" :
+                            section.status === "partial" ? "bg-yellow-500" : "bg-gray-300"
+                          )}
+                          title={`${section.label}: ${section.status}`}
+                        />
+                      ))}
+                      {artifact.sections.length > 6 && (
+                        <span className="text-xs text-muted-foreground ml-1">+{artifact.sections.length - 6}</span>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      <Sheet open={!!selectedArtifactId} onOpenChange={(open) => {
+        if (!open) {
+          setSelectedArtifactId(null);
+          setSelectedSectionId(null);
+        }
+      }}>
+        <SheetContent className="w-[600px] sm:max-w-[600px] overflow-y-auto">
+          {selectedArtifact && (
+            <>
+              <SheetHeader>
+                <div className="flex items-center justify-between">
+                  <SheetTitle>{selectedArtifact.title}</SheetTitle>
+                  <Badge variant="outline">{getTypeLabel(selectedArtifact.type)}</Badge>
+                </div>
+                <SheetDescription>
+                  {selectedArtifact.description}
+                  {linkedDeliverable && (
+                    <span className="block mt-1 text-xs">
+                      Linked to: <span className="font-medium">{linkedDeliverable.name}</span>
+                    </span>
+                  )}
+                </SheetDescription>
+              </SheetHeader>
+
+              <div className="mt-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">Overall Progress</p>
+                    <p className="text-2xl font-bold">{Math.round(selectedArtifact.completionPct)}%</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-muted-foreground">
+                      {selectedArtifact.sections.filter(s => s.status === "complete").length} of {selectedArtifact.sections.length} complete
+                    </p>
+                  </div>
+                </div>
+                <Progress value={selectedArtifact.completionPct} className="h-3" />
+
+                <div className="space-y-2 pt-4">
+                  <h4 className="font-semibold text-sm">Sections</h4>
+                  <div className="space-y-2">
+                    {selectedArtifact.sections
+                      .sort((a, b) => a.orderIndex - b.orderIndex)
+                      .map(section => (
+                        <div
+                          key={section.id}
+                          className={cn(
+                            "p-3 rounded-lg border cursor-pointer transition-colors",
+                            selectedSectionId === section.id
+                              ? "border-primary bg-primary/5"
+                              : "hover:border-primary/50"
+                          )}
+                          onClick={() => setSelectedSectionId(section.id)}
+                          data-testid={`section-${section.id}`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              {getStatusIcon(section.status)}
+                              <span className="font-medium text-sm">{section.label}</span>
+                            </div>
+                            <Badge className={cn("text-xs", getStatusColor(section.status))}>
+                              {section.status.toUpperCase()}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+
+                {selectedSection && (
+                  <div className="space-y-4 pt-4 border-t">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-semibold">{selectedSection.label}</h4>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleAskVantisToDraft}
+                        disabled={isDrafting}
+                        data-testid="button-ask-vantis-draft"
+                      >
+                        {isDrafting ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Drafting...
+                          </>
+                        ) : (
+                          <>
+                            <Wand2 className="w-4 h-4 mr-2" />
+                            Ask VANTIS to draft
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    
+                    <p className="text-sm text-muted-foreground italic">
+                      {SECTION_DESCRIPTIONS[selectedSection.key] || "Content for this section."}
+                    </p>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Content</label>
+                      <Textarea
+                        value={sectionContent}
+                        onChange={(e) => setSectionContent(e.target.value)}
+                        placeholder="Enter section content..."
+                        className="min-h-[200px] font-mono text-sm"
+                        data-testid="input-section-content"
+                      />
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button 
+                        onClick={handleSaveSection}
+                        disabled={updateSectionMutation.isPending}
+                        data-testid="button-save-section"
+                      >
+                        {updateSectionMutation.isPending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Check className="w-4 h-4 mr-2" />
+                            Save Section
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
@@ -4136,6 +4540,9 @@ export default function MissionControl() {
               <TabsTrigger value="account-growth" className="data-[state=active]:bg-background" data-testid="tab-account-growth">
                 Account Growth
               </TabsTrigger>
+              <TabsTrigger value="artifacts" className="data-[state=active]:bg-background" data-testid="tab-artifacts">
+                Artifacts
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -4185,6 +4592,10 @@ export default function MissionControl() {
 
               <TabsContent value="account-growth" className="mt-0 h-full">
                 <AccountGrowthTab projectId={project.id} />
+              </TabsContent>
+
+              <TabsContent value="artifacts" className="mt-0 h-full">
+                <ArtifactsTab projectId={project.id} />
               </TabsContent>
             </div>
 
