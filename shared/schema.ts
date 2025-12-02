@@ -31,10 +31,10 @@ export const artifactTypeEnum = pgEnum("artifact_type", ["activation_map_doc", "
 export const sectionStatusEnum = pgEnum("section_status", ["empty", "partial", "complete"]);
 
 // Proposal Enums
-export const proposalStatusEnum = pgEnum("proposal_status", ["DRAFT", "IN_REVIEW", "SIGNED", "CONVERTED"]);
+export const proposalStatusEnum = pgEnum("proposal_status", ["DRAFT", "IN_REVIEW", "SIGNED", "CONVERTED", "LOST"]);
 
 // Project Status Enum
-export const projectStatusEnum = pgEnum("project_status", ["ACTIVE", "PROSPECTIVE"]);
+export const projectStatusEnum = pgEnum("project_status", ["ACTIVE", "ARCHIVED"]);
 
 // Projects Table
 export const projects = pgTable("projects", {

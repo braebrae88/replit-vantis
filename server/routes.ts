@@ -87,6 +87,40 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   
+  // ============= SIDEBAR ITEMS =============
+  
+  app.get("/api/sidebar/items", async (_req, res) => {
+    try {
+      // Get ACTIVE projects
+      const allProjects = await storage.getProjects();
+      const activeProjects = allProjects.filter(p => p.status === "ACTIVE" || !p.status);
+      
+      // Get proposals that are not CONVERTED and not LOST
+      const allProposals = await storage.getProposals();
+      const prospectiveProposals = allProposals.filter(
+        p => p.status !== "CONVERTED" && p.status !== "LOST"
+      );
+      
+      res.json({
+        current: activeProjects.map(p => ({
+          id: p.id,
+          title: p.name,
+          type: "project" as const,
+        })),
+        prospective: prospectiveProposals.map(p => ({
+          id: p.id,
+          title: p.title,
+          clientName: p.clientName,
+          type: "proposal" as const,
+          status: p.status,
+        })),
+      });
+    } catch (error) {
+      console.error("Error fetching sidebar items:", error);
+      res.status(500).json({ error: "Failed to fetch sidebar items" });
+    }
+  });
+
   // ============= PROJECTS =============
   
   app.get("/api/projects", async (_req, res) => {
