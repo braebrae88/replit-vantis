@@ -43,6 +43,8 @@ import {
   onActivityChange,
   recalculateDeliverableMetrics,
 } from "./deliverableMetrics";
+import { getDeliverableGuidance } from "./guidanceService";
+import OpenAI from "openai";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -736,6 +738,33 @@ export async function registerRoutes(
 
   // ============= AI COMPANION =============
 
+  const openai = new OpenAI({
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+  });
+
+  const COMPANION_SYSTEM_PROMPT = `You are VANTIS Companion, an intelligent assistant for enterprise project managers working on VANTIS Activation Graph initiatives. You help users navigate complex consulting deliverables, understand project state, and make progress on their work.
+
+Your expertise includes:
+- Forge Vantis methodology for AI activation consulting
+- Microsoft partner programs (Foundry, Frontier, ECIF)
+- Enterprise change management and stakeholder alignment
+- Workshop facilitation and meeting planning
+- Risk assessment and mitigation strategies
+
+When responding:
+1. Be concise but thorough - use bullet points and clear headings
+2. Reference specific project data when available
+3. Provide actionable recommendations
+4. Highlight risks and blockers proactively
+5. Suggest workshops or meetings when stakeholder alignment is needed
+
+Format your responses using markdown with:
+- **Bold** for emphasis
+- Bullet points for lists
+- ### Headings for sections
+- Keep responses focused and scannable`;
+
   app.post("/api/ai/companion", async (req, res) => {
     try {
       const result = companionRequestSchema.safeParse(req.body);
@@ -743,45 +772,126 @@ export async function registerRoutes(
         return res.status(400).json({ error: fromError(result.error).toString() });
       }
 
-      const { projectId, message } = result.data;
+      const { projectId, deliverableId, message } = result.data;
 
-      // Verify project exists
       const project = await storage.getProject(projectId);
       if (!project) {
         return res.status(404).json({ error: "Project not found" });
       }
 
-      // TODO: Replace with actual Google AI Studio integration
-      // For now, return a structured dummy response
+      const [useCases, tasks, risks] = await Promise.all([
+        storage.getUseCases(projectId),
+        storage.getTasks(projectId),
+        storage.getRisks(projectId),
+      ]);
+
+      interface ContextPayload {
+        project: {
+          id: string;
+          name: string;
+          description: string | null;
+          status: string;
+          startDate: string | null;
+          endDate: string | null;
+        };
+        useCases: { id: string; name: string; status: string }[];
+        openTasks: { id: string; title: string; priority: string; status: string }[];
+        activeRisks: { id: string; title: string; category: string; likelihood: number; impact: number }[];
+        deliverable?: {
+          id: string;
+          type: string;
+          name: string;
+          status: string;
+          progress: number;
+        };
+        guidance?: {
+          nextBestSteps: Array<{
+            activityName: string;
+            milestoneName: string;
+            missingInputs: string[];
+            riskIfIgnored: string;
+          }>;
+          overallGaps: string[];
+          scopeFlags: Array<{ type: string; severity: string; message: string }>;
+          notes: string;
+        };
+      }
+
+      const contextPayload: ContextPayload = {
+        project: {
+          id: project.id,
+          name: project.name,
+          description: project.description,
+          status: project.phase,
+          startDate: project.startDate?.toISOString().split("T")[0] || null,
+          endDate: project.endDate?.toISOString().split("T")[0] || null,
+        },
+        useCases: useCases.slice(0, 5).map((uc) => ({
+          id: uc.id,
+          name: uc.name,
+          status: uc.status,
+        })),
+        openTasks: tasks
+          .filter((t) => t.status !== "done")
+          .slice(0, 5)
+          .map((t) => ({
+            id: t.id,
+            title: t.title,
+            priority: t.priority,
+            status: t.status,
+          })),
+        activeRisks: risks
+          .filter((r) => r.status !== "resolved" && r.status !== "accepted")
+          .slice(0, 5)
+          .map((r) => ({
+            id: r.id,
+            title: r.title,
+            category: r.category,
+            likelihood: r.likelihood,
+            impact: r.impact,
+          })),
+      };
+
+      if (deliverableId) {
+        const guidanceResult = await getDeliverableGuidance(deliverableId);
+        if (guidanceResult) {
+          const { guidance } = guidanceResult;
+          contextPayload.deliverable = guidance.deliverableSummary;
+          contextPayload.guidance = {
+            nextBestSteps: guidance.nextBestSteps.slice(0, 5).map((step) => ({
+              activityName: step.activityName,
+              milestoneName: step.milestoneName,
+              missingInputs: step.missingInputs,
+              riskIfIgnored: step.riskIfIgnored,
+            })),
+            overallGaps: guidance.overallGaps.slice(0, 5),
+            scopeFlags: guidance.scopeFlags,
+            notes: guidance.notes,
+          };
+        }
+      }
+
+      const userPrompt = `Current Project Context:
+\`\`\`json
+${JSON.stringify(contextPayload, null, 2)}
+\`\`\`
+
+User Question: ${message}`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: COMPANION_SYSTEM_PROMPT },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.7,
+        max_tokens: 1500,
+      });
+
+      const responseText = completion.choices[0]?.message?.content || "I apologize, but I was unable to generate a response. Please try again.";
+
       const response: CompanionResponse = {
-        responseText: `Thank you for your question about "${project.name}". This is a placeholder response from VANTIS Companion. Once integrated with Google AI Studio, I'll provide intelligent analysis and recommendations based on your project data and query: "${message}"`,
-        assumptions: [
-          "The project timeline follows standard enterprise implementation phases",
-          "Key stakeholders have been identified and are available for consultation",
-          "Technical infrastructure requirements are within standard parameters",
-        ],
-        gaps: [
-          "Detailed risk assessment may need additional stakeholder input",
-          "Integration requirements with existing systems need clarification",
-          "Success metrics and KPIs should be defined more specifically",
-        ],
-        suggestedTasks: [
-          {
-            title: "Schedule stakeholder alignment meeting",
-            description: "Organize a meeting with key stakeholders to validate assumptions and address identified gaps",
-            priority: "high",
-          },
-          {
-            title: "Document integration requirements",
-            description: "Create a detailed specification of integration points with existing systems",
-            priority: "medium",
-          },
-          {
-            title: "Define success metrics",
-            description: "Work with business owners to establish measurable KPIs for the project",
-            priority: "medium",
-          },
-        ],
+        responseText,
       };
 
       res.json(response);

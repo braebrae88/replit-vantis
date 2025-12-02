@@ -693,14 +693,102 @@ interface ChatMessage {
   response?: CompanionResponse;
 }
 
-function VantisCompanionPanel({ projectId }: { projectId: string }) {
+function MarkdownContent({ content }: { content: string }) {
+  const lines = content.split('\n');
+  const elements: React.ReactNode[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    
+    if (line.startsWith('### ')) {
+      elements.push(
+        <h3 key={i} className="font-semibold text-sm mt-3 mb-1">{line.slice(4)}</h3>
+      );
+    } else if (line.startsWith('## ')) {
+      elements.push(
+        <h2 key={i} className="font-bold text-sm mt-3 mb-1">{line.slice(3)}</h2>
+      );
+    } else if (line.startsWith('# ')) {
+      elements.push(
+        <h1 key={i} className="font-bold text-base mt-3 mb-1">{line.slice(2)}</h1>
+      );
+    } else if (line.startsWith('- ') || line.startsWith('* ')) {
+      const listItems: string[] = [];
+      while (i < lines.length && (lines[i].startsWith('- ') || lines[i].startsWith('* '))) {
+        listItems.push(lines[i].slice(2));
+        i++;
+      }
+      i--;
+      elements.push(
+        <ul key={i} className="list-disc list-inside space-y-0.5 text-sm my-1">
+          {listItems.map((item, idx) => (
+            <li key={idx}>{renderInlineMarkdown(item)}</li>
+          ))}
+        </ul>
+      );
+    } else if (/^\d+\.\s/.test(line)) {
+      const listItems: string[] = [];
+      while (i < lines.length && /^\d+\.\s/.test(lines[i])) {
+        listItems.push(lines[i].replace(/^\d+\.\s/, ''));
+        i++;
+      }
+      i--;
+      elements.push(
+        <ol key={i} className="list-decimal list-inside space-y-0.5 text-sm my-1">
+          {listItems.map((item, idx) => (
+            <li key={idx}>{renderInlineMarkdown(item)}</li>
+          ))}
+        </ol>
+      );
+    } else if (line.trim() === '') {
+      elements.push(<div key={i} className="h-2" />);
+    } else {
+      elements.push(
+        <p key={i} className="text-sm my-0.5">{renderInlineMarkdown(line)}</p>
+      );
+    }
+    i++;
+  }
+
+  return <div className="space-y-0">{elements}</div>;
+}
+
+function renderInlineMarkdown(text: string): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  let remaining = text;
+  let key = 0;
+
+  while (remaining.length > 0) {
+    const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
+    if (boldMatch && boldMatch.index !== undefined) {
+      if (boldMatch.index > 0) {
+        parts.push(remaining.slice(0, boldMatch.index));
+      }
+      parts.push(<strong key={key++}>{boldMatch[1]}</strong>);
+      remaining = remaining.slice(boldMatch.index + boldMatch[0].length);
+    } else {
+      parts.push(remaining);
+      break;
+    }
+  }
+
+  return parts.length === 1 ? parts[0] : <>{parts}</>;
+}
+
+interface VantisCompanionPanelProps {
+  projectId: string;
+  selectedDeliverableId?: string;
+}
+
+function VantisCompanionPanel({ projectId, selectedDeliverableId }: VantisCompanionPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const { toast } = useToast();
 
   const mutation = useMutation({
-    mutationFn: (message: string) => api.companion.chat(projectId, message),
+    mutationFn: (message: string) => api.companion.chat(projectId, message, selectedDeliverableId),
     onSuccess: (response) => {
       setMessages((prev) => [
         ...prev,
@@ -728,19 +816,6 @@ function VantisCompanionPanel({ projectId }: { projectId: string }) {
     setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
     setInput("");
     mutation.mutate(userMessage);
-  };
-
-  const getPriorityBadgeColor = (priority: string) => {
-    switch (priority) {
-      case "critical":
-        return "bg-red-500/20 text-red-700 dark:text-red-400";
-      case "high":
-        return "bg-orange-500/20 text-orange-700 dark:text-orange-400";
-      case "medium":
-        return "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400";
-      default:
-        return "bg-blue-500/20 text-blue-700 dark:text-blue-400";
-    }
   };
 
   return (
@@ -794,63 +869,10 @@ function VantisCompanionPanel({ projectId }: { projectId: string }) {
                           )}
                           data-testid={`chat-message-${index}`}
                         >
-                          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                          
-                          {message.response && (
-                            <div className="mt-4 space-y-3">
-                              {message.response.assumptions.length > 0 && (
-                                <div>
-                                  <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground mb-1">
-                                    <CircleDot className="w-3 h-3" />
-                                    Assumptions
-                                  </div>
-                                  <ul className="text-xs space-y-1 pl-4">
-                                    {message.response.assumptions.map((a, i) => (
-                                      <li key={i} className="list-disc">{a}</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-                              
-                              {message.response.gaps.length > 0 && (
-                                <div>
-                                  <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground mb-1">
-                                    <AlertTriangle className="w-3 h-3" />
-                                    Gaps Identified
-                                  </div>
-                                  <ul className="text-xs space-y-1 pl-4">
-                                    {message.response.gaps.map((g, i) => (
-                                      <li key={i} className="list-disc">{g}</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-                              
-                              {message.response.suggestedTasks.length > 0 && (
-                                <div>
-                                  <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground mb-1">
-                                    <ListTodo className="w-3 h-3" />
-                                    Suggested Tasks
-                                  </div>
-                                  <div className="space-y-2">
-                                    {message.response.suggestedTasks.map((task, i) => (
-                                      <div key={i} className="bg-muted/50 rounded p-2">
-                                        <div className="flex items-center gap-2">
-                                          <span className="text-xs font-medium">{task.title}</span>
-                                          <Badge 
-                                            variant="outline" 
-                                            className={cn("text-[10px] capitalize", getPriorityBadgeColor(task.priority))}
-                                          >
-                                            {task.priority}
-                                          </Badge>
-                                        </div>
-                                        <p className="text-xs text-muted-foreground mt-1">{task.description}</p>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
+                          {message.role === "user" ? (
+                            <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                          ) : (
+                            <MarkdownContent content={message.content} />
                           )}
                         </div>
                       </div>
@@ -1279,10 +1301,15 @@ const DELIVERABLE_TYPES = [
   { value: "exec_framing", label: "Executive Framing", description: "Frame the initiative for executive stakeholders" },
 ] as const;
 
-function DeliverablesTab({ projectId }: { projectId: string }) {
+interface DeliverablesTabProps {
+  projectId: string;
+  selectedDeliverableId: string | null;
+  onDeliverableSelect: (id: string | null) => void;
+}
+
+function DeliverablesTab({ projectId, selectedDeliverableId, onDeliverableSelect }: DeliverablesTabProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [selectedDeliverableId, setSelectedDeliverableId] = useState<string | null>(null);
   const [expandedMilestones, setExpandedMilestones] = useState<Set<string>>(new Set());
   const [expandedWorkshops, setExpandedWorkshops] = useState<Set<string>>(new Set());
 
@@ -1494,7 +1521,7 @@ function DeliverablesTab({ projectId }: { projectId: string }) {
                 "cursor-pointer transition-all hover:border-primary/50",
                 selectedDeliverableId === deliverable.id && "border-primary ring-1 ring-primary"
               )}
-              onClick={() => setSelectedDeliverableId(deliverable.id)}
+              onClick={() => onDeliverableSelect(deliverable.id)}
               data-testid={`card-deliverable-${deliverable.id}`}
             >
               <CardHeader className="pb-2">
@@ -1524,7 +1551,7 @@ function DeliverablesTab({ projectId }: { projectId: string }) {
                   className="mt-2 w-full gap-2"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setSelectedDeliverableId(deliverable.id);
+                    onDeliverableSelect(deliverable.id);
                   }}
                   data-testid={`button-view-guidance-${deliverable.id}`}
                 >
@@ -2155,6 +2182,7 @@ function RoadmapTab({ projectId }: { projectId: string }) {
 export default function MissionControl() {
   const params = useParams();
   const projectId = params.id;
+  const [selectedDeliverableId, setSelectedDeliverableId] = useState<string | null>(null);
 
   const { data: project, isLoading: projectLoading } = useQuery({
     queryKey: ["project", projectId],
@@ -2224,7 +2252,7 @@ export default function MissionControl() {
     <MissionControlLayout>
       <div className="p-6 max-w-6xl mx-auto">
         <NextActionsPanel projectId={project.id} />
-        <VantisCompanionPanel projectId={project.id} />
+        <VantisCompanionPanel projectId={project.id} selectedDeliverableId={selectedDeliverableId || undefined} />
         <Tabs defaultValue="summary" className="space-y-6">
           <TabsList className="bg-muted/50">
             <TabsTrigger value="summary" data-testid="tab-summary">
@@ -2290,7 +2318,11 @@ export default function MissionControl() {
           </TabsContent>
 
           <TabsContent value="deliverables">
-            <DeliverablesTab projectId={project.id} />
+            <DeliverablesTab 
+              projectId={project.id} 
+              selectedDeliverableId={selectedDeliverableId}
+              onDeliverableSelect={setSelectedDeliverableId}
+            />
           </TabsContent>
         </Tabs>
       </div>

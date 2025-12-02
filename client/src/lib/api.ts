@@ -378,11 +378,11 @@ export const api = {
 
   // AI Companion
   companion: {
-    chat: async (projectId: string, message: string): Promise<CompanionResponse> => {
+    chat: async (projectId: string, message: string, deliverableId?: string): Promise<CompanionResponse> => {
       const response = await fetch("/api/ai/companion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, message }),
+        body: JSON.stringify({ projectId, message, deliverableId }),
       });
       return handleResponse(response);
     },

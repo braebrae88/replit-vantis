@@ -113,6 +113,7 @@ The backend is built using **Express.js** with **TypeScript**:
 - Drizzle ORM for database operations
 - Zod for runtime validation
 - ws (WebSocket) for Neon database connections
+- OpenAI SDK with Replit AI Integrations for VANTIS Companion
 
 **Development Tools**:
 - Vite for frontend development and building
