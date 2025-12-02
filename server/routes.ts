@@ -16,6 +16,9 @@ import {
   insertDeliverableSchema,
   insertMilestoneSchema,
   insertActivitySchema,
+  insertEngagementInsightSchema,
+  insertOpportunitySeedSchema,
+  updateOpportunitySeedSchema,
   companionRequestSchema,
   type NextAction,
   type CompanionResponse,
@@ -734,6 +737,127 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Failed to create meeting event:", error);
       res.status(500).json({ error: "Failed to create meeting event" });
+    }
+  });
+
+  // ============= ENGAGEMENT INSIGHTS =============
+
+  app.get("/api/projects/:id/engagement-insights", async (req, res) => {
+    try {
+      const projectId = req.params.id;
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      const insights = await storage.getEngagementInsights(projectId);
+      res.json(insights);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch engagement insights" });
+    }
+  });
+
+  app.post("/api/projects/:id/engagement-insights", async (req, res) => {
+    try {
+      const projectId = req.params.id;
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const result = insertEngagementInsightSchema.safeParse({ ...req.body, projectId });
+      if (!result.success) {
+        return res.status(400).json({ error: fromError(result.error).toString() });
+      }
+
+      const insight = await storage.createEngagementInsight(result.data);
+      res.status(201).json(insight);
+    } catch (error) {
+      console.error("Failed to create engagement insight:", error);
+      res.status(500).json({ error: "Failed to create engagement insight" });
+    }
+  });
+
+  app.delete("/api/engagement-insights/:id", async (req, res) => {
+    try {
+      const success = await storage.deleteEngagementInsight(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Engagement insight not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete engagement insight" });
+    }
+  });
+
+  // ============= OPPORTUNITY SEEDS =============
+
+  app.get("/api/projects/:id/opportunity-seeds", async (req, res) => {
+    try {
+      const projectId = req.params.id;
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      const seeds = await storage.getOpportunitySeeds(projectId);
+      res.json(seeds);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch opportunity seeds" });
+    }
+  });
+
+  app.post("/api/projects/:id/opportunity-seeds", async (req, res) => {
+    try {
+      const projectId = req.params.id;
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const result = insertOpportunitySeedSchema.safeParse({ ...req.body, projectId });
+      if (!result.success) {
+        return res.status(400).json({ error: fromError(result.error).toString() });
+      }
+
+      const seed = await storage.createOpportunitySeed(result.data);
+      res.status(201).json(seed);
+    } catch (error) {
+      console.error("Failed to create opportunity seed:", error);
+      res.status(500).json({ error: "Failed to create opportunity seed" });
+    }
+  });
+
+  app.patch("/api/opportunity-seeds/:id", async (req, res) => {
+    try {
+      const existingSeed = await storage.getOpportunitySeed(req.params.id);
+      if (!existingSeed) {
+        return res.status(404).json({ error: "Opportunity seed not found" });
+      }
+
+      const allowedFields = ["title", "description", "source", "status", "potentialValueEstimate", "riskLevel"];
+      const filteredBody = Object.fromEntries(
+        Object.entries(req.body).filter(([key]) => allowedFields.includes(key))
+      );
+
+      if (Object.keys(filteredBody).length === 0) {
+        return res.status(400).json({ error: "No valid fields provided for update" });
+      }
+
+      const seed = await storage.updateOpportunitySeed(req.params.id, filteredBody);
+      res.json(seed);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update opportunity seed" });
+    }
+  });
+
+  app.delete("/api/opportunity-seeds/:id", async (req, res) => {
+    try {
+      const success = await storage.deleteOpportunitySeed(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Opportunity seed not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete opportunity seed" });
     }
   });
 

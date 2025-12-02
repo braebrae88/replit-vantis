@@ -16,6 +16,12 @@ export const deliverableStatusEnum = pgEnum("deliverable_status", ["not_started"
 export const milestoneStatusEnum = pgEnum("milestone_status", ["not_started", "in_progress", "blocked", "done"]);
 export const activityStatusEnum = pgEnum("activity_status", ["not_started", "in_progress", "blocked", "done"]);
 
+// Engagement Intelligence Enums
+export const insightTypeEnum = pgEnum("insight_type", ["meeting_summary", "decision", "open_question", "risk", "opportunity_hint"]);
+export const sentimentEnum = pgEnum("sentiment", ["positive", "neutral", "negative"]);
+export const importanceEnum = pgEnum("importance", ["low", "medium", "high"]);
+export const opportunityStatusEnum = pgEnum("opportunity_status", ["idea", "qualified", "proposed", "won", "lost"]);
+
 // Projects Table
 export const projects = pgTable("projects", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -168,6 +174,35 @@ export const activities = pgTable("activities", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+// Engagement Insights Table
+export const engagementInsights = pgTable("engagement_insights", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  eventId: varchar("event_id").references(() => events.id, { onDelete: "set null" }),
+  type: insightTypeEnum("type").notNull(),
+  title: text("title").notNull(),
+  summary: text("summary").notNull(),
+  sentiment: sentimentEnum("sentiment"),
+  importance: importanceEnum("importance"),
+  tags: text("tags").array().notNull().default(sql`ARRAY[]::text[]`),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdByAI: boolean("created_by_ai").notNull().default(true),
+});
+
+// Opportunity Seeds Table
+export const opportunitySeeds = pgTable("opportunity_seeds", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  source: text("source").notNull(),
+  status: opportunityStatusEnum("status").notNull().default("idea"),
+  potentialValueEstimate: real("potential_value_estimate"),
+  riskLevel: text("risk_level"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 // Relations
 export const projectsRelations = relations(projects, ({ many }) => ({
   useCases: many(useCases),
@@ -177,6 +212,8 @@ export const projectsRelations = relations(projects, ({ many }) => ({
   stakeholders: many(stakeholders),
   events: many(events),
   deliverables: many(deliverables),
+  engagementInsights: many(engagementInsights),
+  opportunitySeeds: many(opportunitySeeds),
 }));
 
 export const useCasesRelations = relations(useCases, ({ one, many }) => ({
@@ -237,11 +274,12 @@ export const stakeholdersRelations = relations(stakeholders, ({ one }) => ({
   }),
 }));
 
-export const eventsRelations = relations(events, ({ one }) => ({
+export const eventsRelations = relations(events, ({ one, many }) => ({
   project: one(projects, {
     fields: [events.projectId],
     references: [projects.id],
   }),
+  engagementInsights: many(engagementInsights),
 }));
 
 export const deliverablesRelations = relations(deliverables, ({ one, many }) => ({
@@ -264,6 +302,24 @@ export const activitiesRelations = relations(activities, ({ one }) => ({
   milestone: one(milestones, {
     fields: [activities.milestoneId],
     references: [milestones.id],
+  }),
+}));
+
+export const engagementInsightsRelations = relations(engagementInsights, ({ one }) => ({
+  project: one(projects, {
+    fields: [engagementInsights.projectId],
+    references: [projects.id],
+  }),
+  event: one(events, {
+    fields: [engagementInsights.eventId],
+    references: [events.id],
+  }),
+}));
+
+export const opportunitySeedsRelations = relations(opportunitySeeds, ({ one }) => ({
+  project: one(projects, {
+    fields: [opportunitySeeds.projectId],
+    references: [projects.id],
   }),
 }));
 
@@ -355,6 +411,25 @@ export const insertActivitySchema = createInsertSchema(activities).omit({
 
 export const selectActivitySchema = createSelectSchema(activities);
 
+export const insertEngagementInsightSchema = createInsertSchema(engagementInsights).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const selectEngagementInsightSchema = createSelectSchema(engagementInsights);
+
+export const insertOpportunitySeedSchema = createInsertSchema(opportunitySeeds).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateOpportunitySeedSchema = insertOpportunitySeedSchema.partial().extend({
+  id: z.string().uuid("Invalid opportunity seed ID format"),
+});
+
+export const selectOpportunitySeedSchema = createSelectSchema(opportunitySeeds);
+
 export const insertFileEventSchema = z.object({
   projectId: z.string().uuid("Invalid project ID format"),
   fileName: z.string().min(1, "File name is required"),
@@ -418,6 +493,13 @@ export type InsertMilestone = z.infer<typeof insertMilestoneSchema>;
 
 export type Activity = typeof activities.$inferSelect;
 export type InsertActivity = z.infer<typeof insertActivitySchema>;
+
+export type EngagementInsight = typeof engagementInsights.$inferSelect;
+export type InsertEngagementInsight = z.infer<typeof insertEngagementInsightSchema>;
+
+export type OpportunitySeed = typeof opportunitySeeds.$inferSelect;
+export type InsertOpportunitySeed = z.infer<typeof insertOpportunitySeedSchema>;
+export type UpdateOpportunitySeed = z.infer<typeof updateOpportunitySeedSchema>;
 
 // Next Actions Types (not stored in DB, computed on-the-fly)
 export const nextActionSeverityEnum = ["low", "medium", "high", "critical"] as const;

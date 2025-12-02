@@ -10,6 +10,8 @@ import {
   deliverables,
   milestones,
   activities,
+  engagementInsights,
+  opportunitySeeds,
   type Project,
   type InsertProject,
   type UseCase,
@@ -32,6 +34,10 @@ import {
   type InsertMilestone,
   type Activity,
   type InsertActivity,
+  type EngagementInsight,
+  type InsertEngagementInsight,
+  type OpportunitySeed,
+  type InsertOpportunitySeed,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql } from "drizzle-orm";
@@ -112,6 +118,19 @@ export interface IStorage {
   createActivity(activity: InsertActivity): Promise<Activity>;
   updateActivity(id: string, activity: Partial<InsertActivity>): Promise<Activity | undefined>;
   deleteActivity(id: string): Promise<boolean>;
+
+  // Engagement Insights
+  getEngagementInsights(projectId: string): Promise<EngagementInsight[]>;
+  getEngagementInsight(id: string): Promise<EngagementInsight | undefined>;
+  createEngagementInsight(insight: InsertEngagementInsight): Promise<EngagementInsight>;
+  deleteEngagementInsight(id: string): Promise<boolean>;
+
+  // Opportunity Seeds
+  getOpportunitySeeds(projectId: string): Promise<OpportunitySeed[]>;
+  getOpportunitySeed(id: string): Promise<OpportunitySeed | undefined>;
+  createOpportunitySeed(seed: InsertOpportunitySeed): Promise<OpportunitySeed>;
+  updateOpportunitySeed(id: string, seed: Partial<InsertOpportunitySeed>): Promise<OpportunitySeed | undefined>;
+  deleteOpportunitySeed(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -461,6 +480,55 @@ export class DatabaseStorage implements IStorage {
 
   async deleteActivity(id: string): Promise<boolean> {
     const result = await db.delete(activities).where(eq(activities.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  // Engagement Insights
+  async getEngagementInsights(projectId: string): Promise<EngagementInsight[]> {
+    return await db.select().from(engagementInsights).where(eq(engagementInsights.projectId, projectId)).orderBy(sql`${engagementInsights.createdAt} desc`);
+  }
+
+  async getEngagementInsight(id: string): Promise<EngagementInsight | undefined> {
+    const [insight] = await db.select().from(engagementInsights).where(eq(engagementInsights.id, id));
+    return insight;
+  }
+
+  async createEngagementInsight(insight: InsertEngagementInsight): Promise<EngagementInsight> {
+    const [newInsight] = await db.insert(engagementInsights).values(insight).returning();
+    return newInsight;
+  }
+
+  async deleteEngagementInsight(id: string): Promise<boolean> {
+    const result = await db.delete(engagementInsights).where(eq(engagementInsights.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  // Opportunity Seeds
+  async getOpportunitySeeds(projectId: string): Promise<OpportunitySeed[]> {
+    return await db.select().from(opportunitySeeds).where(eq(opportunitySeeds.projectId, projectId)).orderBy(sql`${opportunitySeeds.createdAt} desc`);
+  }
+
+  async getOpportunitySeed(id: string): Promise<OpportunitySeed | undefined> {
+    const [seed] = await db.select().from(opportunitySeeds).where(eq(opportunitySeeds.id, id));
+    return seed;
+  }
+
+  async createOpportunitySeed(seed: InsertOpportunitySeed): Promise<OpportunitySeed> {
+    const [newSeed] = await db.insert(opportunitySeeds).values(seed).returning();
+    return newSeed;
+  }
+
+  async updateOpportunitySeed(id: string, seed: Partial<InsertOpportunitySeed>): Promise<OpportunitySeed | undefined> {
+    const [updated] = await db
+      .update(opportunitySeeds)
+      .set({ ...seed, updatedAt: new Date() })
+      .where(eq(opportunitySeeds.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteOpportunitySeed(id: string): Promise<boolean> {
+    const result = await db.delete(opportunitySeeds).where(eq(opportunitySeeds.id, id));
     return result.rowCount ? result.rowCount > 0 : false;
   }
 }

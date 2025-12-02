@@ -54,6 +54,8 @@ The backend is built using **Express.js** with **TypeScript**:
   - Workflow Segments can belong to projects and optionally to use cases
   - Tasks, Risks, Stakeholders, and Events all linked to projects
   - Readiness Scores for tracking project progress
+  - Deliverables with Milestones and Activities for orchestration
+  - Engagement Insights and Opportunity Seeds for AI-generated intelligence
   - Extensive use of enums for status fields to ensure data consistency
   
 **Schema Management**:

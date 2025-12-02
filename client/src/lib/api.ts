@@ -24,6 +24,10 @@ import type {
   Milestone,
   Activity,
   GuidanceResponse,
+  EngagementInsight,
+  InsertEngagementInsight,
+  OpportunitySeed,
+  InsertOpportunitySeed,
 } from "@shared/schema";
 
 async function handleResponse<T>(response: Response): Promise<T> {
@@ -463,6 +467,62 @@ export const api = {
     getActivities: async (milestoneId: string): Promise<Activity[]> => {
       const response = await fetch(`/api/milestones/${milestoneId}/activities`);
       return handleResponse(response);
+    },
+  },
+
+  // Engagement Insights
+  engagementInsights: {
+    list: async (projectId: string): Promise<EngagementInsight[]> => {
+      const response = await fetch(`/api/projects/${projectId}/engagement-insights`);
+      return handleResponse(response);
+    },
+    create: async (projectId: string, data: Omit<InsertEngagementInsight, 'projectId'>): Promise<EngagementInsight> => {
+      const response = await fetch(`/api/projects/${projectId}/engagement-insights`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      return handleResponse(response);
+    },
+    delete: async (id: string): Promise<void> => {
+      const response = await fetch(`/api/engagement-insights/${id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to delete engagement insight");
+      }
+    },
+  },
+
+  // Opportunity Seeds
+  opportunitySeeds: {
+    list: async (projectId: string): Promise<OpportunitySeed[]> => {
+      const response = await fetch(`/api/projects/${projectId}/opportunity-seeds`);
+      return handleResponse(response);
+    },
+    create: async (projectId: string, data: Omit<InsertOpportunitySeed, 'projectId'>): Promise<OpportunitySeed> => {
+      const response = await fetch(`/api/projects/${projectId}/opportunity-seeds`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      return handleResponse(response);
+    },
+    update: async (id: string, data: Partial<InsertOpportunitySeed>): Promise<OpportunitySeed> => {
+      const response = await fetch(`/api/opportunity-seeds/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      return handleResponse(response);
+    },
+    delete: async (id: string): Promise<void> => {
+      const response = await fetch(`/api/opportunity-seeds/${id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to delete opportunity seed");
+      }
     },
   },
 };

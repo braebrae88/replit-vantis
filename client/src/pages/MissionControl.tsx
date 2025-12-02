@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { api } from "@/lib/api";
-import type { Task, UseCase, Risk, Project, Event, NextAction, CompanionResponse, SuggestedTask, StatusReport, RoadmapResponse, RoadmapTask, RoadmapWeek } from "@shared/schema";
+import type { Task, UseCase, Risk, Project, Event, NextAction, CompanionResponse, SuggestedTask, StatusReport, RoadmapResponse, RoadmapTask, RoadmapWeek, EngagementInsight, OpportunitySeed } from "@shared/schema";
 import { useState } from "react";
 import MissionControlLayout from "@/components/MissionControlLayout";
 import { CreateProjectDialog } from "@/components/CreateProjectDialog";
@@ -2179,6 +2179,243 @@ function RoadmapTab({ projectId }: { projectId: string }) {
   );
 }
 
+function InsightsTab({ projectId }: { projectId: string }) {
+  const { data: insights = [], isLoading: insightsLoading } = useQuery({
+    queryKey: ["engagementInsights", projectId],
+    queryFn: () => api.engagementInsights.list(projectId),
+  });
+
+  const { data: seeds = [], isLoading: seedsLoading } = useQuery({
+    queryKey: ["opportunitySeeds", projectId],
+    queryFn: () => api.opportunitySeeds.list(projectId),
+  });
+
+  const groupedInsights = insights.reduce((acc, insight) => {
+    const type = insight.type || "unknown";
+    if (!acc[type]) acc[type] = [];
+    acc[type].push(insight);
+    return acc;
+  }, {} as Record<string, EngagementInsight[]>);
+
+  const insightTypeLabels: Record<string, string> = {
+    meeting_summary: "Meeting Summaries",
+    decision: "Decisions",
+    open_question: "Open Questions",
+    risk: "Risks Identified",
+    opportunity_hint: "Opportunity Hints",
+  };
+
+  const getInsightTypeIcon = (type: string) => {
+    switch (type) {
+      case "meeting_summary": return <Video className="w-4 h-4" />;
+      case "decision": return <CheckCircle2 className="w-4 h-4" />;
+      case "open_question": return <MessageSquare className="w-4 h-4" />;
+      case "risk": return <AlertTriangle className="w-4 h-4" />;
+      case "opportunity_hint": return <Lightbulb className="w-4 h-4" />;
+      default: return <FileText className="w-4 h-4" />;
+    }
+  };
+
+  const getSentimentBadge = (sentiment: string | null) => {
+    if (!sentiment) return null;
+    const colors: Record<string, string> = {
+      positive: "bg-green-100 text-green-700 border-green-200",
+      neutral: "bg-gray-100 text-gray-700 border-gray-200",
+      negative: "bg-red-100 text-red-700 border-red-200",
+    };
+    return (
+      <Badge variant="outline" className={cn("text-xs", colors[sentiment] || colors.neutral)}>
+        {sentiment}
+      </Badge>
+    );
+  };
+
+  const getImportanceBadge = (importance: string | null) => {
+    if (!importance) return null;
+    const colors: Record<string, string> = {
+      high: "bg-red-100 text-red-700 border-red-200",
+      medium: "bg-yellow-100 text-yellow-700 border-yellow-200",
+      low: "bg-blue-100 text-blue-700 border-blue-200",
+    };
+    return (
+      <Badge variant="outline" className={cn("text-xs", colors[importance] || colors.medium)}>
+        {importance}
+      </Badge>
+    );
+  };
+
+  const getOpportunityStatusBadge = (status: string) => {
+    const colors: Record<string, string> = {
+      idea: "bg-gray-100 text-gray-700 border-gray-200",
+      qualified: "bg-blue-100 text-blue-700 border-blue-200",
+      proposed: "bg-purple-100 text-purple-700 border-purple-200",
+      won: "bg-green-100 text-green-700 border-green-200",
+      lost: "bg-red-100 text-red-700 border-red-200",
+    };
+    return (
+      <Badge variant="outline" className={cn("text-xs uppercase", colors[status] || colors.idea)}>
+        {status}
+      </Badge>
+    );
+  };
+
+  if (insightsLoading || seedsLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-32 w-full" />
+      </div>
+    );
+  }
+
+  const hasNoData = insights.length === 0 && seeds.length === 0;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Lightbulb className="w-5 h-5 text-yellow-500" />
+            Engagement Intelligence
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            AI-generated insights from meetings, emails, and events
+          </p>
+        </div>
+      </div>
+
+      {hasNoData ? (
+        <Card className="border-dashed" data-testid="card-no-insights">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <Lightbulb className="w-12 h-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium mb-2">No Insights Yet</h3>
+            <p className="text-sm text-muted-foreground text-center max-w-md">
+              Insights will appear here as meetings, emails, and events are analyzed by AI.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {Object.entries(groupedInsights).length > 0 && (
+            <div className="space-y-4">
+              <h3 className="text-base font-medium">Insights by Type</h3>
+              {Object.entries(groupedInsights).map(([type, typeInsights]) => (
+                <Card key={type} data-testid={`card-insights-${type}`}>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+                      {getInsightTypeIcon(type)}
+                      {insightTypeLabels[type] || type.replace(/_/g, " ")}
+                      <Badge variant="secondary" className="ml-auto">
+                        {typeInsights.length}
+                      </Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {typeInsights.map((insight) => (
+                      <div
+                        key={insight.id}
+                        className="p-3 rounded-lg border bg-muted/30"
+                        data-testid={`insight-${insight.id}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm">{insight.title}</p>
+                            <p className="text-sm text-muted-foreground mt-1">{insight.summary}</p>
+                            {insight.tags && insight.tags.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {insight.tags.map((tag, idx) => (
+                                  <Badge key={idx} variant="outline" className="text-xs">
+                                    {tag}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            {getSentimentBadge(insight.sentiment)}
+                            {getImportanceBadge(insight.importance)}
+                            {insight.createdByAI && (
+                              <Badge variant="secondary" className="text-xs">
+                                <Bot className="w-3 h-3 mr-1" />
+                                AI
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          {formatDistanceToNow(new Date(insight.createdAt), { addSuffix: true })}
+                        </p>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {seeds.length > 0 && (
+            <div className="space-y-4">
+              <h3 className="text-base font-medium flex items-center gap-2">
+                <TrendingUp className="w-4 h-4" />
+                Opportunity Seeds
+              </h3>
+              <Card data-testid="card-opportunity-seeds">
+                <CardContent className="pt-6">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Title</TableHead>
+                        <TableHead>Source</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Est. Value</TableHead>
+                        <TableHead>Risk</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {seeds.map((seed) => (
+                        <TableRow key={seed.id} data-testid={`seed-${seed.id}`}>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium text-sm">{seed.title}</p>
+                              <p className="text-xs text-muted-foreground truncate max-w-xs">
+                                {seed.description}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs">
+                              {seed.source}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {getOpportunityStatusBadge(seed.status)}
+                          </TableCell>
+                          <TableCell>
+                            {seed.potentialValueEstimate 
+                              ? `$${seed.potentialValueEstimate.toLocaleString()}`
+                              : "—"}
+                          </TableCell>
+                          <TableCell>
+                            {seed.riskLevel ? (
+                              <Badge variant="outline" className="text-xs">
+                                {seed.riskLevel}
+                              </Badge>
+                            ) : "—"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function MissionControl() {
   const params = useParams();
   const projectId = params.id;
@@ -2287,6 +2524,10 @@ export default function MissionControl() {
               <Briefcase className="w-4 h-4 mr-2" />
               Deliverables
             </TabsTrigger>
+            <TabsTrigger value="insights" data-testid="tab-insights">
+              <Lightbulb className="w-4 h-4 mr-2" />
+              Insights
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="summary">
@@ -2323,6 +2564,10 @@ export default function MissionControl() {
               selectedDeliverableId={selectedDeliverableId}
               onDeliverableSelect={setSelectedDeliverableId}
             />
+          </TabsContent>
+
+          <TabsContent value="insights">
+            <InsightsTab projectId={project.id} />
           </TabsContent>
         </Tabs>
       </div>
