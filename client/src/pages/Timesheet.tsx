@@ -30,6 +30,7 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  Trash2,
 } from "lucide-react";
 
 interface EditableEntry extends TimesheetEntry {
@@ -48,7 +49,30 @@ export default function Timesheet() {
   const [entries, setEntries] = useState<EditableEntry[]>([]);
   const [totalHours, setTotalHours] = useState<TimesheetHours | null>(null);
   const [copied, setCopied] = useState(false);
+  const [isDeletingTestData, setIsDeletingTestData] = useState(false);
   const { toast } = useToast();
+
+  const handleDeleteTestData = async () => {
+    if (!window.confirm("Are you sure you want to delete ALL test data? This cannot be undone.")) {
+      return;
+    }
+
+    setIsDeletingTestData(true);
+    try {
+      const response = await fetch("/admin/test-data", { method: "DELETE" });
+      const data = await response.json();
+      if (data.success) {
+        alert("Test data cleared.");
+        window.location.reload();
+      } else {
+        alert("Failed to clear test data.");
+      }
+    } catch (error) {
+      alert("Failed to clear test data.");
+    } finally {
+      setIsDeletingTestData(false);
+    }
+  };
 
   const mutation = useMutation({
     mutationFn: () => api.timesheet.generate(fromDate, toDate),
@@ -187,11 +211,28 @@ export default function Timesheet() {
                 </p>
               </div>
             </div>
-            <Button variant="outline" asChild>
-              <a href="/" data-testid="link-back-dashboard">
-                Back to Dashboard
-              </a>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleDeleteTestData}
+                disabled={isDeletingTestData}
+                className="text-xs text-muted-foreground hover:text-destructive border border-dashed border-muted-foreground/30"
+                data-testid="button-delete-test-data"
+              >
+                {isDeletingTestData ? (
+                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                ) : (
+                  <Trash2 className="w-3 h-3 mr-1" />
+                )}
+                Delete Test Data (Dev Only)
+              </Button>
+              <Button variant="outline" asChild>
+                <a href="/" data-testid="link-back-dashboard">
+                  Back to Dashboard
+                </a>
+              </Button>
+            </div>
           </div>
         </div>
       </header>
