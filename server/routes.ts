@@ -13,6 +13,9 @@ import {
   insertFileEventSchema,
   insertEmailEventSchema,
   insertMeetingEventSchema,
+  insertDeliverableSchema,
+  insertMilestoneSchema,
+  insertActivitySchema,
   companionRequestSchema,
   type NextAction,
   type CompanionResponse,
@@ -1173,6 +1176,231 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Failed to generate roadmap:", error);
       res.status(500).json({ error: "Failed to generate roadmap" });
+    }
+  });
+
+  // ============= DELIVERABLES =============
+
+  app.get("/api/projects/:id/deliverables", async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      const deliverables = await storage.getDeliverables(req.params.id);
+      res.json(deliverables);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch deliverables" });
+    }
+  });
+
+  app.post("/api/projects/:id/deliverables", async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      const result = insertDeliverableSchema.safeParse({
+        ...req.body,
+        projectId: req.params.id,
+      });
+      if (!result.success) {
+        return res.status(400).json({ error: fromError(result.error).toString() });
+      }
+      const deliverable = await storage.createDeliverable(result.data);
+      res.status(201).json(deliverable);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create deliverable" });
+    }
+  });
+
+  app.get("/api/deliverables/:id", async (req, res) => {
+    try {
+      const deliverable = await storage.getDeliverable(req.params.id);
+      if (!deliverable) {
+        return res.status(404).json({ error: "Deliverable not found" });
+      }
+      res.json(deliverable);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch deliverable" });
+    }
+  });
+
+  app.patch("/api/deliverables/:id", async (req, res) => {
+    try {
+      const result = insertDeliverableSchema.partial().safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ error: fromError(result.error).toString() });
+      }
+      const deliverable = await storage.updateDeliverable(req.params.id, result.data);
+      if (!deliverable) {
+        return res.status(404).json({ error: "Deliverable not found" });
+      }
+      res.json(deliverable);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update deliverable" });
+    }
+  });
+
+  app.delete("/api/deliverables/:id", async (req, res) => {
+    try {
+      const success = await storage.deleteDeliverable(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Deliverable not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete deliverable" });
+    }
+  });
+
+  // ============= MILESTONES =============
+
+  app.get("/api/deliverables/:id/milestones", async (req, res) => {
+    try {
+      const deliverable = await storage.getDeliverable(req.params.id);
+      if (!deliverable) {
+        return res.status(404).json({ error: "Deliverable not found" });
+      }
+      const milestones = await storage.getMilestones(req.params.id);
+      res.json(milestones);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch milestones" });
+    }
+  });
+
+  app.post("/api/deliverables/:id/milestones", async (req, res) => {
+    try {
+      const deliverable = await storage.getDeliverable(req.params.id);
+      if (!deliverable) {
+        return res.status(404).json({ error: "Deliverable not found" });
+      }
+      const result = insertMilestoneSchema.safeParse({
+        ...req.body,
+        deliverableId: req.params.id,
+      });
+      if (!result.success) {
+        return res.status(400).json({ error: fromError(result.error).toString() });
+      }
+      const milestone = await storage.createMilestone(result.data);
+      res.status(201).json(milestone);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create milestone" });
+    }
+  });
+
+  app.get("/api/milestones/:id", async (req, res) => {
+    try {
+      const milestone = await storage.getMilestone(req.params.id);
+      if (!milestone) {
+        return res.status(404).json({ error: "Milestone not found" });
+      }
+      res.json(milestone);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch milestone" });
+    }
+  });
+
+  app.patch("/api/milestones/:id", async (req, res) => {
+    try {
+      const result = insertMilestoneSchema.partial().safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ error: fromError(result.error).toString() });
+      }
+      const milestone = await storage.updateMilestone(req.params.id, result.data);
+      if (!milestone) {
+        return res.status(404).json({ error: "Milestone not found" });
+      }
+      res.json(milestone);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update milestone" });
+    }
+  });
+
+  app.delete("/api/milestones/:id", async (req, res) => {
+    try {
+      const success = await storage.deleteMilestone(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Milestone not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete milestone" });
+    }
+  });
+
+  // ============= ACTIVITIES =============
+
+  app.get("/api/milestones/:id/activities", async (req, res) => {
+    try {
+      const milestone = await storage.getMilestone(req.params.id);
+      if (!milestone) {
+        return res.status(404).json({ error: "Milestone not found" });
+      }
+      const activities = await storage.getActivities(req.params.id);
+      res.json(activities);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch activities" });
+    }
+  });
+
+  app.post("/api/milestones/:id/activities", async (req, res) => {
+    try {
+      const milestone = await storage.getMilestone(req.params.id);
+      if (!milestone) {
+        return res.status(404).json({ error: "Milestone not found" });
+      }
+      const result = insertActivitySchema.safeParse({
+        ...req.body,
+        milestoneId: req.params.id,
+      });
+      if (!result.success) {
+        return res.status(400).json({ error: fromError(result.error).toString() });
+      }
+      const activity = await storage.createActivity(result.data);
+      res.status(201).json(activity);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create activity" });
+    }
+  });
+
+  app.get("/api/activities/:id", async (req, res) => {
+    try {
+      const activity = await storage.getActivity(req.params.id);
+      if (!activity) {
+        return res.status(404).json({ error: "Activity not found" });
+      }
+      res.json(activity);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch activity" });
+    }
+  });
+
+  app.patch("/api/activities/:id", async (req, res) => {
+    try {
+      const result = insertActivitySchema.partial().safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ error: fromError(result.error).toString() });
+      }
+      const activity = await storage.updateActivity(req.params.id, result.data);
+      if (!activity) {
+        return res.status(404).json({ error: "Activity not found" });
+      }
+      res.json(activity);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update activity" });
+    }
+  });
+
+  app.delete("/api/activities/:id", async (req, res) => {
+    try {
+      const success = await storage.deleteActivity(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Activity not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete activity" });
     }
   });
 
