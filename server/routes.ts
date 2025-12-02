@@ -84,6 +84,7 @@ import { buildRiskReportSystemPrompt, buildRiskReportUserPrompt, parseRiskReport
 import { callLLM, parseJSONResponse } from "./ai/client";
 import { convertProposalToProject } from "./proposalConversionService";
 import { computeNextActions } from "./nextActionsService";
+import { evaluateTriggers, createReportSuggestionIfNeeded } from "./reportTriggerService";
 import { populateArtifactsFromInsights, populateArtifactsFromTasks, populateArtifactsFromRisks } from "./artifactPopulationService";
 
 export async function registerRoutes(
@@ -4357,6 +4358,27 @@ Best regards`;
     } catch (error) {
       console.error("Failed to dismiss suggestion:", error);
       res.status(500).json({ error: "Failed to dismiss suggestion" });
+    }
+  });
+
+  app.post("/api/projects/:projectId/evaluate-report-triggers", async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const triggerResult = await evaluateTriggers(req.params.projectId);
+      
+      if (triggerResult.shouldSuggest) {
+        const suggestion = await createReportSuggestionIfNeeded(req.params.projectId);
+        res.json({ triggered: true, suggestion, reason: triggerResult.reason, details: triggerResult.details });
+      } else {
+        res.json({ triggered: false, reason: triggerResult.details });
+      }
+    } catch (error) {
+      console.error("Failed to evaluate triggers:", error);
+      res.status(500).json({ error: "Failed to evaluate triggers" });
     }
   });
 
