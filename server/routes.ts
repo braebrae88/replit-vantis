@@ -71,6 +71,7 @@ import { IMPACT_STORY_SYSTEM_PROMPT, ImpactStoryResult } from "./ai/impactStoryP
 import { ACCOUNT_GROWTH_SYSTEM_PROMPT, AccountGrowthResult, RuleBasedSuggestion, EngagementIdea } from "./ai/accountGrowthPrompt";
 import { TRANSCRIPT_INTAKE_SYSTEM_PROMPT, buildTranscriptIntakePrompt, TranscriptAnalysisResult } from "./ai/transcriptIntakePrompt";
 import { ACTIVITY_GUIDANCE_SYSTEM_PROMPT, buildActivityGuidanceUserPrompt } from "./ai/activityGuidancePrompt";
+import { SOW_BOOTSTRAP_SYSTEM_PROMPT, buildSoWBootstrapPrompt, SoWBootstrapResult } from "./ai/sowBootstrapPrompt";
 import { callLLM, parseJSONResponse } from "./ai/client";
 import { computeNextActions } from "./nextActionsService";
 
@@ -1597,6 +1598,231 @@ Please generate an impact story based on this information.`;
     } catch (error) {
       console.error("Failed to generate activity guidance:", error);
       res.status(500).json({ error: "Failed to generate activity guidance" });
+    }
+  });
+
+  // ============= SOW BOOTSTRAP =============
+
+  const sowBootstrapSchema = z.object({
+    statementOfWorkText: z.string().min(50, "Statement of Work must be at least 50 characters"),
+  });
+
+  app.post("/api/ai/projects/:projectId/bootstrap-from-sow", async (req, res) => {
+    try {
+      const projectId = req.params.projectId;
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const parseResult = sowBootstrapSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ error: fromError(parseResult.error).toString() });
+      }
+
+      const { statementOfWorkText } = parseResult.data;
+
+      const userPrompt = buildSoWBootstrapPrompt(statementOfWorkText, {
+        name: project.name,
+        clientName: project.clientName || undefined,
+      });
+
+      const llmResult = await callLLM({
+        systemPrompt: SOW_BOOTSTRAP_SYSTEM_PROMPT,
+        userContent: userPrompt,
+        temperature: 0.3,
+        maxTokens: 3000,
+        jsonMode: true,
+      });
+
+      if (!llmResult.success) {
+        return res.status(500).json({ error: llmResult.error });
+      }
+
+      const jsonResult = parseJSONResponse<SoWBootstrapResult>(llmResult.content);
+      if (!jsonResult.success || !jsonResult.data) {
+        return res.status(500).json({ error: jsonResult.error });
+      }
+
+      const analysis = jsonResult.data;
+
+      const createdUseCases: typeof useCases.$inferSelect[] = [];
+      const createdDeliverables: typeof deliverables.$inferSelect[] = [];
+      const createdTasks: typeof tasks.$inferSelect[] = [];
+      const createdInsights: typeof engagementInsights.$inferSelect[] = [];
+      const createdStakeholders: typeof stakeholders.$inferSelect[] = [];
+
+      for (const uc of analysis.useCases) {
+        const priorityMap: Record<string, "low" | "medium" | "high" | "critical"> = {
+          high: "high",
+          medium: "medium", 
+          low: "low",
+        };
+        const useCase = await storage.createUseCase({
+          projectId,
+          name: uc.name,
+          description: uc.description,
+          priority: priorityMap[uc.priority] || "medium",
+          status: "identified",
+        });
+        createdUseCases.push(useCase);
+      }
+
+      for (const deliverableType of analysis.deliverableTypes) {
+        try {
+          const result = await instantiateDeliverableFromTemplate(projectId, deliverableType);
+          if (result.deliverable) {
+            createdDeliverables.push(result.deliverable);
+          }
+        } catch (err) {
+          console.warn(`Failed to instantiate deliverable ${deliverableType}:`, err);
+        }
+      }
+
+      for (const task of analysis.tasks) {
+        const priorityMap: Record<string, "low" | "medium" | "high" | "critical"> = {
+          critical: "critical",
+          high: "high",
+          medium: "medium",
+          low: "low",
+        };
+        const createdTask = await storage.createTask({
+          projectId,
+          title: task.title,
+          description: task.description,
+          priority: priorityMap[task.priority] || "medium",
+          status: "todo",
+          owner: task.ownerRole || undefined,
+        });
+        createdTasks.push(createdTask);
+      }
+
+      for (const stakeholder of analysis.stakeholders) {
+        const influenceMap: Record<string, "low" | "medium" | "high"> = {
+          high: "high",
+          medium: "medium",
+          low: "low",
+        };
+        const createdStakeholder = await storage.createStakeholder({
+          projectId,
+          name: stakeholder.name,
+          role: stakeholder.role || undefined,
+          organization: stakeholder.organization || undefined,
+          influence: influenceMap[stakeholder.influence] || "medium",
+          supportLevel: "neutral",
+        });
+        createdStakeholders.push(createdStakeholder);
+      }
+
+      const insightsToCreate: Parameters<typeof storage.createManyEngagementInsights>[0] = [];
+
+      insightsToCreate.push({
+        projectId,
+        type: "meeting_summary",
+        title: "SoW Bootstrap Summary",
+        summary: analysis.projectSummary,
+        importance: "high",
+        tags: ["sow", "bootstrap", "initialization"],
+        createdByAI: true,
+      });
+
+      for (const insight of analysis.insights) {
+        const typeMap: Record<string, "meeting_summary" | "decision" | "open_question" | "sentiment_shift" | "relationship_update" | "milestone_reached"> = {
+          constraint: "decision",
+          opportunity: "sentiment_shift",
+          risk: "open_question",
+          context: "meeting_summary",
+        };
+        const importanceMap: Record<string, "low" | "medium" | "high"> = {
+          high: "high",
+          medium: "medium",
+          low: "low",
+        };
+        insightsToCreate.push({
+          projectId,
+          type: typeMap[insight.type] || "meeting_summary",
+          title: insight.title,
+          summary: insight.summary,
+          importance: importanceMap[insight.importance] || "medium",
+          tags: ["sow", insight.type],
+          createdByAI: true,
+        });
+      }
+
+      if (insightsToCreate.length > 0) {
+        const created = await storage.createManyEngagementInsights(insightsToCreate);
+        createdInsights.push(...created);
+      }
+
+      if (analysis.suggestedPhase && analysis.suggestedPhase !== project.phase) {
+        await storage.updateProject(projectId, {
+          phase: analysis.suggestedPhase.toLowerCase() as "discovery" | "design" | "development" | "deployment",
+        });
+      }
+
+      if (analysis.timeline.startDate || analysis.timeline.endDate) {
+        const updateData: Parameters<typeof storage.updateProject>[1] = {};
+        if (analysis.timeline.startDate) {
+          updateData.startDate = new Date(analysis.timeline.startDate);
+        }
+        if (analysis.timeline.endDate) {
+          updateData.endDate = new Date(analysis.timeline.endDate);
+        }
+        if (Object.keys(updateData).length > 0) {
+          await storage.updateProject(projectId, updateData);
+        }
+      }
+
+      for (const na of analysis.nextActions) {
+        const severityToPriority: Record<string, "low" | "medium" | "high" | "critical"> = {
+          critical: "critical",
+          high: "high",
+          medium: "medium",
+          low: "low",
+        };
+        const urgencyToDays: Record<string, number> = {
+          NOW: 3,
+          SOON: 7,
+          LATER: 14,
+        };
+        const dueDate = new Date();
+        dueDate.setDate(dueDate.getDate() + (urgencyToDays[na.urgency] || 7));
+        
+        const actionTask = await storage.createTask({
+          projectId,
+          title: `[SoW] ${na.title}`,
+          description: `${na.description}\n\n---\nCategory: ${na.category}\nSource: Statement of Work bootstrap`,
+          priority: severityToPriority[na.severity] || "medium",
+          status: "todo",
+          dueDate,
+        });
+        createdTasks.push(actionTask);
+      }
+
+      const recomputedNextActions = await computeNextActions(projectId);
+
+      res.json({
+        success: true,
+        summary: analysis.projectSummary,
+        suggestedPhase: analysis.suggestedPhase,
+        created: {
+          useCases: createdUseCases.length,
+          deliverables: createdDeliverables.length,
+          tasks: createdTasks.length,
+          stakeholders: createdStakeholders.length,
+          insights: createdInsights.length,
+        },
+        useCases: createdUseCases,
+        deliverables: createdDeliverables,
+        tasks: createdTasks,
+        stakeholders: createdStakeholders,
+        insights: createdInsights,
+        nextActions: recomputedNextActions,
+        timeline: analysis.timeline,
+      });
+    } catch (error) {
+      console.error("Failed to bootstrap from SoW:", error);
+      res.status(500).json({ error: "Failed to bootstrap project from Statement of Work" });
     }
   });
 
