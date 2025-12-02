@@ -159,7 +159,7 @@ export function CreateTaskDialog({ projectId, useCaseId }: { projectId: string, 
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Priority</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger data-testid="select-task-priority">
                           <SelectValue placeholder="Select priority" />
@@ -182,7 +182,7 @@ export function CreateTaskDialog({ projectId, useCaseId }: { projectId: string, 
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Status</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger data-testid="select-task-status">
                           <SelectValue placeholder="Select status" />
