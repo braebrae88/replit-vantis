@@ -41,6 +41,13 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Building2,
   Calendar,
   Pencil,
@@ -2995,6 +3002,9 @@ function RoadmapTab({ projectId }: { projectId: string }) {
 }
 
 function InsightsTab({ projectId }: { projectId: string }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
   const { data: insights = [], isLoading: insightsLoading } = useQuery({
     queryKey: ["engagementInsights", projectId],
     queryFn: () => api.engagementInsights.list(projectId),
@@ -3003,6 +3013,22 @@ function InsightsTab({ projectId }: { projectId: string }) {
   const { data: seeds = [], isLoading: seedsLoading } = useQuery({
     queryKey: ["opportunitySeeds", projectId],
     queryFn: () => api.opportunitySeeds.list(projectId),
+  });
+
+  const updateSeedMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      api.opportunitySeeds.update(id, { status: status as any }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["opportunitySeeds", projectId] });
+      toast({ title: "Status updated", description: "Opportunity seed status has been updated." });
+    },
+    onError: (error) => {
+      toast({
+        title: "Update failed",
+        description: error instanceof Error ? error.message : "Failed to update status",
+        variant: "destructive",
+      });
+    },
   });
 
   const groupedInsights = insights.reduce((acc, insight) => {
@@ -3203,7 +3229,22 @@ function InsightsTab({ projectId }: { projectId: string }) {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            {getOpportunityStatusBadge(seed.status)}
+                            <Select
+                              value={seed.status}
+                              onValueChange={(value) => updateSeedMutation.mutate({ id: seed.id, status: value })}
+                              disabled={updateSeedMutation.isPending}
+                            >
+                              <SelectTrigger className="w-28 h-8" data-testid={`select-seed-status-${seed.id}`}>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="idea">Idea</SelectItem>
+                                <SelectItem value="qualified">Qualified</SelectItem>
+                                <SelectItem value="proposed">Proposed</SelectItem>
+                                <SelectItem value="won">Won</SelectItem>
+                                <SelectItem value="lost">Lost</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </TableCell>
                           <TableCell>
                             {seed.potentialValueEstimate 
