@@ -59,6 +59,18 @@ export interface AccountGrowthResponse {
   opportunitySeeds: OpportunitySeed[];
 }
 
+export interface ActivityGuidanceResponse {
+  recommendedTitle: string;
+  objective: string;
+  whenToSchedule: string;
+  recommendedDurationMinutes: number;
+  recommendedAttendees: string[];
+  agenda: Array<{ time: string; topic: string }>;
+  prepChecklist: string[];
+  outputChecklist: string[];
+  emailInviteDraft: string;
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: "Request failed" }));
@@ -495,6 +507,13 @@ export const api = {
     },
     getActivities: async (milestoneId: string): Promise<Activity[]> => {
       const response = await fetch(`/api/milestones/${milestoneId}/activities`);
+      return handleResponse(response);
+    },
+  },
+
+  activities: {
+    getGuidance: async (activityId: string): Promise<ActivityGuidanceResponse> => {
+      const response = await fetch(`/api/ai/activities/${activityId}/guidance`);
       return handleResponse(response);
     },
   },

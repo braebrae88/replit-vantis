@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
-import { api, ImpactStoryResponse, AccountGrowthResponse, RuleBasedSuggestion, EngagementIdea } from "@/lib/api";
+import { api, ImpactStoryResponse, AccountGrowthResponse, RuleBasedSuggestion, EngagementIdea, ActivityGuidanceResponse } from "@/lib/api";
 import type { Task, UseCase, Risk, Project, Event, NextAction, CompanionResponse, SuggestedTask, StatusReport, RoadmapResponse, RoadmapTask, RoadmapWeek, EngagementInsight, OpportunitySeed, Stakeholder, MetricSnapshot } from "@shared/schema";
 import { useState, useEffect, useCallback, useRef } from "react";
 import MissionControlLayout from "@/components/MissionControlLayout";
@@ -3498,6 +3498,292 @@ function InsightsTab({ projectId }: { projectId: string }) {
   );
 }
 
+interface ActivityGuidanceDrawerProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  activityId: string | null;
+  action: NextAction | null;
+  projectId: string;
+}
+
+function ActivityGuidanceDrawer({ open, onOpenChange, activityId, action, projectId }: ActivityGuidanceDrawerProps) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [emailCopied, setEmailCopied] = useState(false);
+  const [isMarkingPlanned, setIsMarkingPlanned] = useState(false);
+
+  const { data: guidance, isLoading, error } = useQuery({
+    queryKey: ["activityGuidance", activityId],
+    queryFn: () => api.activities.getGuidance(activityId!),
+    enabled: !!activityId && open,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const handleCopyEmail = () => {
+    if (guidance?.emailInviteDraft) {
+      navigator.clipboard.writeText(guidance.emailInviteDraft);
+      setEmailCopied(true);
+      toast({ title: "Copied!", description: "Email invite copied to clipboard" });
+      setTimeout(() => setEmailCopied(false), 2000);
+    }
+  };
+
+  const handleMarkAsPlanned = async () => {
+    if (!action || !projectId) return;
+    
+    setIsMarkingPlanned(true);
+    try {
+      const suggestedDueDate = action.suggestedDueDate 
+        ? new Date(action.suggestedDueDate)
+        : guidance?.whenToSchedule 
+          ? parseSuggestedTiming(guidance.whenToSchedule)
+          : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+      const severityToPriority: Record<string, string> = {
+        critical: "critical",
+        high: "high",
+        medium: "medium",
+        low: "low",
+      };
+
+      await api.tasks.create({
+        projectId,
+        title: guidance?.recommendedTitle || action.title,
+        description: `${guidance?.objective || action.description}\n\n---\nLinked Activity: ${action.title}`,
+        status: "todo",
+        priority: severityToPriority[action.severity] || "medium",
+        dueDate: suggestedDueDate,
+      });
+
+      toast({ 
+        title: "Marked as Planned", 
+        description: "Task created and added to your task list" 
+      });
+      
+      queryClient.invalidateQueries({ queryKey: ["tasks", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["nextActions", projectId] });
+      onOpenChange(false);
+    } catch (error) {
+      toast({ 
+        title: "Error", 
+        description: "Failed to create task. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsMarkingPlanned(false);
+    }
+  };
+
+  const parseSuggestedTiming = (timing: string): Date => {
+    const now = new Date();
+    const lower = timing.toLowerCase();
+    
+    if (lower.includes("today") || lower.includes("immediately")) {
+      return now;
+    }
+    if (lower.includes("tomorrow")) {
+      return new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    }
+    if (lower.includes("this week") || lower.includes("next 3") || lower.includes("next few days")) {
+      return new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+    }
+    if (lower.includes("next week")) {
+      return new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    }
+    if (lower.includes("2 weeks") || lower.includes("two weeks")) {
+      return new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+    }
+    return new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col" data-testid="dialog-activity-guidance">
+        <DialogHeader className="shrink-0">
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-blue-600" />
+            Activity Guidance
+          </DialogTitle>
+          <DialogDescription>
+            AI-powered playbook for executing this activity
+          </DialogDescription>
+        </DialogHeader>
+        
+        <ScrollArea className="flex-1 pr-4">
+          {isLoading ? (
+            <div className="space-y-4 py-4">
+              <div className="flex items-center justify-center py-12">
+                <div className="text-center">
+                  <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-600 mb-3" />
+                  <p className="text-sm text-muted-foreground">Generating personalized guidance...</p>
+                </div>
+              </div>
+            </div>
+          ) : error ? (
+            <div className="py-8 text-center">
+              <AlertTriangle className="w-8 h-8 mx-auto text-amber-500 mb-3" />
+              <p className="text-sm text-muted-foreground">Failed to load guidance. Please try again.</p>
+            </div>
+          ) : guidance ? (
+            <div className="space-y-5 py-4">
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h3 className="font-semibold text-blue-900 mb-1" data-testid="text-recommended-title">
+                  {guidance.recommendedTitle}
+                </h3>
+                <p className="text-sm text-blue-800" data-testid="text-objective">
+                  {guidance.objective}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-3 bg-muted/50 rounded-lg">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                    <Calendar className="w-3 h-3" />
+                    When to Schedule
+                  </div>
+                  <p className="text-sm font-medium" data-testid="text-when-to-schedule">{guidance.whenToSchedule}</p>
+                </div>
+                <div className="p-3 bg-muted/50 rounded-lg">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                    <Clock className="w-3 h-3" />
+                    Duration
+                  </div>
+                  <p className="text-sm font-medium" data-testid="text-duration">{guidance.recommendedDurationMinutes} minutes</p>
+                </div>
+                <div className="p-3 bg-muted/50 rounded-lg">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                    <Users className="w-3 h-3" />
+                    Attendees
+                  </div>
+                  <p className="text-sm font-medium" data-testid="text-attendee-count">{guidance.recommendedAttendees.length} people</p>
+                </div>
+              </div>
+
+              {guidance.recommendedAttendees.length > 0 && (
+                <div className="p-4 border rounded-lg">
+                  <h4 className="font-medium text-sm mb-2 flex items-center gap-2">
+                    <Users className="w-4 h-4 text-blue-600" />
+                    Recommended Attendees
+                  </h4>
+                  <div className="flex flex-wrap gap-2" data-testid="list-attendees">
+                    {guidance.recommendedAttendees.map((attendee, i) => (
+                      <Badge key={i} variant="secondary" className="text-xs">
+                        {attendee}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="p-4 border rounded-lg">
+                <h4 className="font-medium text-sm mb-3 flex items-center gap-2">
+                  <ClipboardList className="w-4 h-4 text-purple-600" />
+                  Agenda
+                </h4>
+                <div className="space-y-2" data-testid="list-agenda">
+                  {guidance.agenda.map((item, i) => (
+                    <div key={i} className="flex gap-3 text-sm">
+                      <span className="font-mono text-xs text-muted-foreground w-16 shrink-0">{item.time}</span>
+                      <span>{item.topic}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 border rounded-lg">
+                  <h4 className="font-medium text-sm mb-2 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                    Prep Checklist
+                  </h4>
+                  <ul className="space-y-1.5" data-testid="list-prep-checklist">
+                    {guidance.prepChecklist.map((item, i) => (
+                      <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                        <span className="text-green-600 mt-0.5">•</span>
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="p-4 border rounded-lg">
+                  <h4 className="font-medium text-sm mb-2 flex items-center gap-2">
+                    <Target className="w-4 h-4 text-amber-600" />
+                    Outputs Checklist
+                  </h4>
+                  <ul className="space-y-1.5" data-testid="list-output-checklist">
+                    {guidance.outputChecklist.map((item, i) => (
+                      <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                        <span className="text-amber-600 mt-0.5">•</span>
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              <div className="p-4 border rounded-lg">
+                <h4 className="font-medium text-sm mb-3 flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-blue-600" />
+                  Email Invite Draft
+                </h4>
+                <Textarea
+                  readOnly
+                  value={guidance.emailInviteDraft}
+                  className="min-h-[200px] font-mono text-xs bg-muted/30"
+                  data-testid="textarea-email-draft"
+                />
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="mt-2 gap-2"
+                  onClick={handleCopyEmail}
+                  data-testid="button-copy-email"
+                >
+                  {emailCopied ? (
+                    <>
+                      <Check className="w-3 h-3 text-green-600" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3" />
+                      Copy to clipboard
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </ScrollArea>
+
+        <DialogFooter className="shrink-0 border-t pt-4 mt-4">
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-close-guidance">
+            Close
+          </Button>
+          <Button 
+            onClick={handleMarkAsPlanned}
+            disabled={isLoading || isMarkingPlanned || !guidance}
+            className="gap-2"
+            data-testid="button-mark-as-planned"
+          >
+            {isMarkingPlanned ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Creating task...
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="w-4 h-4" />
+                Mark as Planned
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function MissionControl() {
   const params = useParams();
   const projectId = params.id;
@@ -3713,114 +3999,13 @@ export default function MissionControl() {
         </Tabs>
       </div>
 
-      <Dialog open={activityDetailOpen} onOpenChange={setActivityDetailOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {selectedActivity?.action.linkedType === "WORKSHOP" ? (
-                <Video className="w-5 h-5 text-purple-600" />
-              ) : (
-                <Activity className="w-5 h-5 text-blue-600" />
-              )}
-              {selectedActivity?.action.title || "Activity Details"}
-            </DialogTitle>
-            <DialogDescription>
-              {selectedActivity?.action.linkedType === "WORKSHOP" 
-                ? "Workshop details and preparation materials"
-                : "Guidance and next steps for this activity"
-              }
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-4 py-4">
-            <div className="p-4 bg-muted/50 rounded-lg">
-              <h4 className="font-medium text-sm mb-2">Description</h4>
-              <p className="text-sm text-muted-foreground">
-                {selectedActivity?.action.description}
-              </p>
-            </div>
-
-            {selectedActivity?.action.suggestedDueDate && (
-              <div className="flex items-center gap-2 text-sm">
-                <Calendar className="w-4 h-4 text-muted-foreground" />
-                <span className="font-medium">Suggested Due:</span>
-                <span>{format(new Date(selectedActivity.action.suggestedDueDate), "MMMM d, yyyy")}</span>
-              </div>
-            )}
-
-            <div className="p-4 border rounded-lg space-y-3">
-              <h4 className="font-medium text-sm flex items-center gap-2">
-                <Lightbulb className="w-4 h-4 text-amber-500" />
-                Recommended Approach
-              </h4>
-              {selectedActivity?.action.linkedType === "WORKSHOP" ? (
-                <div className="space-y-3 text-sm text-muted-foreground">
-                  <p><strong>1. Preparation:</strong> Send calendar invite 3-5 days in advance with clear agenda and objectives.</p>
-                  <p><strong>2. Agenda:</strong> Introductions (5 min), Current state review (15 min), Pain points discussion (20 min), Solution exploration (15 min), Next steps (5 min).</p>
-                  <p><strong>3. Follow-up:</strong> Send summary notes within 24 hours with action items and owners.</p>
-                </div>
-              ) : (
-                <div className="space-y-3 text-sm text-muted-foreground">
-                  <p><strong>1. Review context:</strong> Check related tasks, risks, and recent engagement insights.</p>
-                  <p><strong>2. Engage stakeholders:</strong> Reach out to relevant stakeholders for input or sign-off.</p>
-                  <p><strong>3. Document progress:</strong> Update the activity status and add any notes or deliverables.</p>
-                </div>
-              )}
-            </div>
-
-            {selectedActivity?.action.linkedType === "WORKSHOP" && (
-              <div className="p-4 border rounded-lg space-y-3">
-                <h4 className="font-medium text-sm flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-blue-500" />
-                  Email Template
-                </h4>
-                <div className="bg-muted/30 p-3 rounded text-sm font-mono text-xs whitespace-pre-wrap">
-{`Subject: ${selectedActivity?.action.title} - Meeting Invite
-
-Hi Team,
-
-I'd like to schedule a ${selectedActivity?.action.title?.toLowerCase().includes('kickoff') ? 'kickoff' : 'working'} session to discuss our project goals and next steps.
-
-Proposed Agenda:
-• Introductions and context setting
-• Current state overview
-• Key objectives and success criteria
-• Discussion and Q&A
-• Next steps and action items
-
-Please let me know your availability for the coming week.
-
-Best regards`}
-                </div>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="gap-2"
-                  onClick={() => {
-                    navigator.clipboard.writeText(`Subject: ${selectedActivity?.action.title} - Meeting Invite\n\nHi Team,\n\nI'd like to schedule a session to discuss our project goals and next steps.\n\nProposed Agenda:\n• Introductions and context setting\n• Current state overview\n• Key objectives and success criteria\n• Discussion and Q&A\n• Next steps and action items\n\nPlease let me know your availability for the coming week.\n\nBest regards`);
-                  }}
-                  data-testid="button-copy-email"
-                >
-                  <Copy className="w-3 h-3" />
-                  Copy to clipboard
-                </Button>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setActivityDetailOpen(false)}>
-              Close
-            </Button>
-            <Button onClick={() => {
-              setActivityDetailOpen(false);
-              setActiveTab("deliverables");
-            }}>
-              Go to Deliverables
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ActivityGuidanceDrawer
+        open={activityDetailOpen}
+        onOpenChange={setActivityDetailOpen}
+        activityId={selectedActivity?.id || null}
+        action={selectedActivity?.action || null}
+        projectId={project.id}
+      />
     </MissionControlLayout>
   );
 }
