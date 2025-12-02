@@ -208,6 +208,19 @@ export const opportunitySeeds = pgTable("opportunity_seeds", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+// Metric Snapshots Table (Value Scorecard)
+export const metricSnapshots = pgTable("metric_snapshots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  unit: text("unit"),
+  baseline: real("baseline"),
+  currentValue: real("current_value"),
+  targetValue: real("target_value"),
+  capturedAt: timestamp("captured_at").notNull().defaultNow(),
+});
+
 // Relations
 export const projectsRelations = relations(projects, ({ many }) => ({
   useCases: many(useCases),
@@ -219,6 +232,7 @@ export const projectsRelations = relations(projects, ({ many }) => ({
   deliverables: many(deliverables),
   engagementInsights: many(engagementInsights),
   opportunitySeeds: many(opportunitySeeds),
+  metricSnapshots: many(metricSnapshots),
 }));
 
 export const useCasesRelations = relations(useCases, ({ one, many }) => ({
@@ -324,6 +338,13 @@ export const engagementInsightsRelations = relations(engagementInsights, ({ one 
 export const opportunitySeedsRelations = relations(opportunitySeeds, ({ one }) => ({
   project: one(projects, {
     fields: [opportunitySeeds.projectId],
+    references: [projects.id],
+  }),
+}));
+
+export const metricSnapshotsRelations = relations(metricSnapshots, ({ one }) => ({
+  project: one(projects, {
+    fields: [metricSnapshots.projectId],
     references: [projects.id],
   }),
 }));
@@ -435,6 +456,17 @@ export const updateOpportunitySeedSchema = insertOpportunitySeedSchema.partial()
 
 export const selectOpportunitySeedSchema = createSelectSchema(opportunitySeeds);
 
+export const insertMetricSnapshotSchema = createInsertSchema(metricSnapshots).omit({
+  id: true,
+  capturedAt: true,
+});
+
+export const updateMetricSnapshotSchema = insertMetricSnapshotSchema.partial().extend({
+  id: z.string().uuid("Invalid metric snapshot ID format"),
+});
+
+export const selectMetricSnapshotSchema = createSelectSchema(metricSnapshots);
+
 export const insertFileEventSchema = z.object({
   projectId: z.string().uuid("Invalid project ID format"),
   fileName: z.string().min(1, "File name is required"),
@@ -505,6 +537,10 @@ export type InsertEngagementInsight = z.infer<typeof insertEngagementInsightSche
 export type OpportunitySeed = typeof opportunitySeeds.$inferSelect;
 export type InsertOpportunitySeed = z.infer<typeof insertOpportunitySeedSchema>;
 export type UpdateOpportunitySeed = z.infer<typeof updateOpportunitySeedSchema>;
+
+export type MetricSnapshot = typeof metricSnapshots.$inferSelect;
+export type InsertMetricSnapshot = z.infer<typeof insertMetricSnapshotSchema>;
+export type UpdateMetricSnapshot = z.infer<typeof updateMetricSnapshotSchema>;
 
 // Next Actions Types (not stored in DB, computed on-the-fly)
 export const nextActionSeverityEnum = ["low", "medium", "high", "critical"] as const;
