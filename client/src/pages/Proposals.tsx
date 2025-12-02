@@ -170,6 +170,26 @@ export default function Proposals() {
     },
   });
 
+  const convertToProjectMutation = useMutation({
+    mutationFn: (id: string) => api.proposals.convertToProject(id),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["proposals"] });
+      queryClient.invalidateQueries({ queryKey: ["proposals", selectedProposalId] });
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      toast({
+        title: "Project Created!",
+        description: `${result.projectName} created with ${result.deliverablesCreated} deliverables and ${result.nextActionsSeeded} next actions.`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Conversion Failed",
+        description: error instanceof Error ? error.message : "Failed to convert proposal to project",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleCreateProposal = () => {
     if (!formData.clientName.trim() || !formData.title.trim()) {
       toast({
@@ -546,10 +566,40 @@ export default function Proposals() {
                 )}
 
                 {selectedProposal.status === "SIGNED" && (
-                  <div className="mt-6 pt-4 border-t">
+                  <div className="mt-6 pt-4 border-t space-y-4">
                     <div className="flex items-center justify-center gap-2 text-green-600">
                       <CheckCheck className="h-5 w-5" />
                       <span className="font-medium">SOW Signed</span>
+                    </div>
+                    <Button
+                      onClick={() => convertToProjectMutation.mutate(selectedProposal.id)}
+                      disabled={convertToProjectMutation.isPending}
+                      className="w-full bg-emerald-600 hover:bg-emerald-700"
+                      data-testid="button-convert-to-project"
+                    >
+                      {convertToProjectMutation.isPending ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Creating Project...
+                        </>
+                      ) : (
+                        <>
+                          <ChevronRight className="h-4 w-4 mr-2" />
+                          Convert to Project
+                        </>
+                      )}
+                    </Button>
+                    <p className="text-xs text-slate-500 text-center">
+                      Creates project with Activation Map, SAFE Prototypes, MS Funding Navigation, and Executive Framing deliverables
+                    </p>
+                  </div>
+                )}
+
+                {selectedProposal.status === "CONVERTED" && (
+                  <div className="mt-6 pt-4 border-t">
+                    <div className="flex items-center justify-center gap-2 text-emerald-600">
+                      <CheckCheck className="h-5 w-5" />
+                      <span className="font-medium">Converted to Project</span>
                     </div>
                   </div>
                 )}

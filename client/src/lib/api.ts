@@ -161,6 +161,16 @@ export interface ProposalAnalysisResponse {
   riskFlags?: ProposalAnalysisRisk[];
 }
 
+export interface ConversionResult {
+  success: boolean;
+  projectId: string;
+  projectName: string;
+  deliverablesCreated: number;
+  artifactsCreated: number;
+  kickoffActivityId: string | null;
+  nextActionsSeeded: number;
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: "Request failed" }));
@@ -891,6 +901,13 @@ export const api = {
     },
     analyse: async (id: string): Promise<ProposalAnalysisResponse> => {
       const response = await fetch(`/api/ai/proposals/${id}/analyse`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      return handleResponse(response);
+    },
+    convertToProject: async (id: string): Promise<ConversionResult> => {
+      const response = await fetch(`/api/proposals/${id}/convert-to-project`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });

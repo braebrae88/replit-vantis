@@ -182,6 +182,7 @@ export const activities = pgTable("activities", {
   requiresInput: boolean("requires_input").notNull().default(false),
   requiredInputs: text("required_inputs").array().notNull().default(sql`ARRAY[]::text[]`),
   createdTaskId: varchar("created_task_id"),
+  aiGeneratedGuidance: text("ai_generated_guidance"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

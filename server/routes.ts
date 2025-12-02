@@ -78,6 +78,7 @@ import { ACTIVITY_GUIDANCE_SYSTEM_PROMPT, buildActivityGuidanceUserPrompt } from
 import { SOW_BOOTSTRAP_SYSTEM_PROMPT, buildSoWBootstrapPrompt, SoWBootstrapResult } from "./ai/sowBootstrapPrompt";
 import { PROPOSAL_ANALYSIS_SYSTEM_PROMPT, buildProposalAnalysisUserPrompt, proposalAnalysisResultSchema, ProposalAnalysisResult } from "./ai/proposalAnalysisPrompt";
 import { callLLM, parseJSONResponse } from "./ai/client";
+import { convertProposalToProject } from "./proposalConversionService";
 import { computeNextActions } from "./nextActionsService";
 import { populateArtifactsFromInsights, populateArtifactsFromTasks, populateArtifactsFromRisks } from "./artifactPopulationService";
 
@@ -1282,8 +1283,8 @@ ${section.content || 'None'}`;
         return res.status(500).json({ error: llmResult.error });
       }
 
-      const parsed = parseJSONResponse<ProposalAnalysisResult>(llmResult.content, proposalAnalysisResultSchema);
-      if (!parsed.success) {
+      const parsed = parseJSONResponse<ProposalAnalysisResult>(llmResult.content);
+      if (!parsed.success || !parsed.data) {
         return res.status(500).json({ error: "Failed to parse analysis result", details: parsed.error });
       }
 
@@ -1291,6 +1292,41 @@ ${section.content || 'None'}`;
     } catch (error) {
       console.error("Failed to analyze proposal:", error);
       res.status(500).json({ error: "Failed to analyze proposal" });
+    }
+  });
+
+  // ============= PROPOSAL TO PROJECT CONVERSION =============
+
+  app.post("/api/proposals/:id/convert-to-project", async (req, res) => {
+    try {
+      const proposal = await storage.getProposal(req.params.id);
+      if (!proposal) {
+        return res.status(404).json({ error: "Proposal not found" });
+      }
+
+      if (proposal.status !== "SIGNED") {
+        return res.status(400).json({ 
+          error: "Proposal must be signed before conversion",
+          currentStatus: proposal.status 
+        });
+      }
+
+      const result = await convertProposalToProject(req.params.id);
+      
+      res.json({
+        success: true,
+        projectId: result.projectId,
+        projectName: result.projectName,
+        deliverablesCreated: result.deliverablesCreated,
+        artifactsCreated: result.artifactsCreated,
+        kickoffActivityId: result.kickoffActivityId,
+        nextActionsSeeded: result.nextActionsSeeded,
+      });
+    } catch (error) {
+      console.error("Failed to convert proposal to project:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to convert proposal to project" 
+      });
     }
   });
 
@@ -2007,6 +2043,15 @@ Please generate an impact story based on this information.`;
       }
 
       const { activity, milestone, deliverable, project, stakeholders, recentInsights } = context;
+
+      if (activity.aiGeneratedGuidance) {
+        try {
+          const preGeneratedGuidance = JSON.parse(activity.aiGeneratedGuidance);
+          return res.json(preGeneratedGuidance);
+        } catch (parseError) {
+          console.error("Failed to parse pre-generated guidance, falling back to LLM:", parseError);
+        }
+      }
 
       const allEvents = await storage.getEvents(project.id);
       const meetingEvents = allEvents

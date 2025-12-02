@@ -29,7 +29,7 @@ interface ArtifactTemplate {
   sections: ArtifactTemplateSection[];
 }
 
-const ARTIFACT_TEMPLATES: Record<string, ArtifactTemplate> = {
+export const ARTIFACT_TEMPLATES: Record<string, ArtifactTemplate> = {
   activation_map: {
     type: "activation_map_doc",
     title: "Activation Map Document",
