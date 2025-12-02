@@ -18,6 +18,7 @@ import {
   insertActivitySchema,
   insertEngagementInsightSchema,
   insertOpportunitySeedSchema,
+  insertMetricSnapshotSchema,
   updateOpportunitySeedSchema,
   companionRequestSchema,
   type NextAction,
@@ -861,6 +862,78 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete opportunity seed" });
+    }
+  });
+
+  // ============= METRIC SNAPSHOTS (VALUE SCORECARD) =============
+
+  app.get("/api/projects/:id/metrics", async (req, res) => {
+    try {
+      const projectId = req.params.id;
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      const metrics = await storage.getMetricSnapshots(projectId);
+      res.json(metrics);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch metrics" });
+    }
+  });
+
+  app.post("/api/projects/:id/metrics", async (req, res) => {
+    try {
+      const projectId = req.params.id;
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const result = insertMetricSnapshotSchema.safeParse({ ...req.body, projectId });
+      if (!result.success) {
+        return res.status(400).json({ error: fromError(result.error).toString() });
+      }
+
+      const metric = await storage.createMetricSnapshot(result.data);
+      res.status(201).json(metric);
+    } catch (error) {
+      console.error("Failed to create metric snapshot:", error);
+      res.status(500).json({ error: "Failed to create metric snapshot" });
+    }
+  });
+
+  app.patch("/api/metrics/:id", async (req, res) => {
+    try {
+      const existingMetric = await storage.getMetricSnapshot(req.params.id);
+      if (!existingMetric) {
+        return res.status(404).json({ error: "Metric snapshot not found" });
+      }
+
+      const allowedFields = ["name", "description", "unit", "baseline", "currentValue", "targetValue"];
+      const filteredBody = Object.fromEntries(
+        Object.entries(req.body).filter(([key]) => allowedFields.includes(key))
+      );
+
+      if (Object.keys(filteredBody).length === 0) {
+        return res.status(400).json({ error: "No valid fields provided for update" });
+      }
+
+      const metric = await storage.updateMetricSnapshot(req.params.id, filteredBody);
+      res.json(metric);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update metric snapshot" });
+    }
+  });
+
+  app.delete("/api/metrics/:id", async (req, res) => {
+    try {
+      const success = await storage.deleteMetricSnapshot(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Metric snapshot not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete metric snapshot" });
     }
   });
 
