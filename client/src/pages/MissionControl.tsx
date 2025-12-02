@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
-import { api, ImpactStoryResponse, AccountGrowthResponse, RuleBasedSuggestion, EngagementIdea, ActivityGuidanceResponse } from "@/lib/api";
+import { api, ImpactStoryResponse, AccountGrowthResponse, RuleBasedSuggestion, EngagementIdea, ActivityGuidanceResponse, SoWBootstrapResponse } from "@/lib/api";
 import type { Task, UseCase, Risk, Project, Event, NextAction, CompanionResponse, SuggestedTask, StatusReport, RoadmapResponse, RoadmapTask, RoadmapWeek, EngagementInsight, OpportunitySeed, Stakeholder, MetricSnapshot } from "@shared/schema";
 import { useState, useEffect, useCallback, useRef } from "react";
 import MissionControlLayout from "@/components/MissionControlLayout";
@@ -129,6 +129,11 @@ function SummaryTab({ project, onTranscriptProcessed }: { project: Project; onTr
     risks: number;
     stakeholders: number;
   } | null>(null);
+  
+  const [sowText, setSowText] = useState("");
+  const [isBootstrapping, setIsBootstrapping] = useState(false);
+  const [bootstrapResult, setBootstrapResult] = useState<SoWBootstrapResponse | null>(null);
+  
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -184,6 +189,53 @@ function SummaryTab({ project, onTranscriptProcessed }: { project: Project; onTr
       });
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleBootstrapFromSoW = async () => {
+    if (!sowText.trim() || sowText.trim().length < 50) {
+      toast({
+        title: "Statement of Work Required",
+        description: "Please paste your Statement of Work text (at least 50 characters).",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsBootstrapping(true);
+    setBootstrapResult(null);
+
+    try {
+      const result = await api.sowBootstrap.bootstrap(project.id, sowText);
+
+      setBootstrapResult(result);
+
+      toast({
+        title: "Project Initialized",
+        description: `Created ${result.created.useCases} use cases, ${result.created.deliverables} deliverables, ${result.created.tasks} tasks, and ${result.created.stakeholders} stakeholders.`,
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["project", project.id] });
+      queryClient.invalidateQueries({ queryKey: ["nextActions", project.id] });
+      queryClient.invalidateQueries({ queryKey: ["useCases", project.id] });
+      queryClient.invalidateQueries({ queryKey: ["tasks", project.id] });
+      queryClient.invalidateQueries({ queryKey: ["deliverables", project.id] });
+      queryClient.invalidateQueries({ queryKey: ["stakeholders", project.id] });
+      queryClient.invalidateQueries({ queryKey: ["engagementInsights", project.id] });
+
+      if (onTranscriptProcessed) {
+        onTranscriptProcessed();
+      }
+
+      setSowText("");
+    } catch (error) {
+      toast({
+        title: "Bootstrap Failed",
+        description: error instanceof Error ? error.message : "Failed to bootstrap from Statement of Work",
+        variant: "destructive",
+      });
+    } finally {
+      setIsBootstrapping(false);
     }
   };
 
@@ -272,6 +324,85 @@ function SummaryTab({ project, onTranscriptProcessed }: { project: Project; onTr
                 <Users className="w-3 h-3" />
                 {processResult.stakeholders} stakeholders
               </Badge>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <ClipboardList className="w-4 h-4 text-primary" />
+            Bootstrap from Statement of Work
+          </CardTitle>
+          <CardDescription>
+            Paste your Statement of Work and let VANTIS automatically create use cases, deliverables, tasks, and stakeholders.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Textarea
+            placeholder="Paste your Statement of Work text here..."
+            value={sowText}
+            onChange={(e) => setSowText(e.target.value)}
+            className="min-h-[150px] resize-y"
+            data-testid="textarea-sow"
+          />
+          <Button
+            onClick={handleBootstrapFromSoW}
+            disabled={isBootstrapping || sowText.trim().length < 50}
+            className="gap-2"
+            data-testid="button-bootstrap-sow"
+          >
+            {isBootstrapping ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Initializing Project...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                Initialize Project with VANTIS
+              </>
+            )}
+          </Button>
+          {bootstrapResult && (
+            <div className="space-y-3 pt-2">
+              <p className="text-sm text-muted-foreground">{bootstrapResult.summary}</p>
+              <div className="flex flex-wrap gap-2 text-sm">
+                <Badge variant="secondary" className="gap-1">
+                  <Target className="w-3 h-3" />
+                  {bootstrapResult.created.useCases} use cases
+                </Badge>
+                <Badge variant="secondary" className="gap-1">
+                  <FileBarChart className="w-3 h-3" />
+                  {bootstrapResult.created.deliverables} deliverables
+                </Badge>
+                <Badge variant="secondary" className="gap-1">
+                  <CheckCircle2 className="w-3 h-3" />
+                  {bootstrapResult.created.tasks} tasks
+                </Badge>
+                <Badge variant="secondary" className="gap-1">
+                  <Users className="w-3 h-3" />
+                  {bootstrapResult.created.stakeholders} stakeholders
+                </Badge>
+                <Badge variant="secondary" className="gap-1">
+                  <Lightbulb className="w-3 h-3" />
+                  {bootstrapResult.created.insights} insights
+                </Badge>
+              </div>
+              {bootstrapResult.timeline.keyMilestones.length > 0 && (
+                <div className="pt-2">
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Key Milestones:</p>
+                  <ul className="text-sm space-y-1">
+                    {bootstrapResult.timeline.keyMilestones.slice(0, 3).map((milestone, i) => (
+                      <li key={i} className="flex items-center gap-2">
+                        <CircleDot className="w-3 h-3 text-primary" />
+                        {milestone}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
         </CardContent>
@@ -3539,7 +3670,7 @@ function ActivityGuidanceDrawer({ open, onOpenChange, activityId, action, projec
           ? parseSuggestedTiming(guidance.whenToSchedule)
           : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-      const severityToPriority: Record<string, string> = {
+      const severityToPriority: Record<string, "low" | "medium" | "high" | "critical"> = {
         critical: "critical",
         high: "high",
         medium: "medium",
@@ -3551,7 +3682,7 @@ function ActivityGuidanceDrawer({ open, onOpenChange, activityId, action, projec
         title: guidance?.recommendedTitle || action.title,
         description: `${guidance?.objective || action.description}\n\n---\nLinked Activity: ${action.title}`,
         status: "todo",
-        priority: severityToPriority[action.severity] || "medium",
+        priority: severityToPriority[action.severity] ?? "medium",
         dueDate: suggestedDueDate,
       });
 

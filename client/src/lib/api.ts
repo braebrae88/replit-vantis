@@ -71,6 +71,30 @@ export interface ActivityGuidanceResponse {
   emailInviteDraft: string;
 }
 
+export interface SoWBootstrapResponse {
+  success: boolean;
+  summary: string;
+  suggestedPhase: string;
+  created: {
+    useCases: number;
+    deliverables: number;
+    tasks: number;
+    stakeholders: number;
+    insights: number;
+  };
+  useCases: UseCase[];
+  deliverables: Deliverable[];
+  tasks: Task[];
+  stakeholders: Stakeholder[];
+  insights: EngagementInsight[];
+  nextActions: NextAction[];
+  timeline: {
+    startDate: string | null;
+    endDate: string | null;
+    keyMilestones: string[];
+  };
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: "Request failed" }));
@@ -585,6 +609,18 @@ export const api = {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
+      });
+      return handleResponse(response);
+    },
+  },
+
+  // SoW Bootstrap
+  sowBootstrap: {
+    bootstrap: async (projectId: string, statementOfWork: string): Promise<SoWBootstrapResponse> => {
+      const response = await fetch(`/api/ai/projects/${projectId}/bootstrap-from-sow`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ statementOfWork }),
       });
       return handleResponse(response);
     },
