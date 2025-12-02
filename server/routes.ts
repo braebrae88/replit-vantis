@@ -35,6 +35,14 @@ import {
 } from "@shared/schema";
 import { fromError } from "zod-validation-error";
 import { instantiateDeliverableFromTemplate, DELIVERABLE_TEMPLATES, type DeliverableTemplate } from "./deliverableTemplates";
+import {
+  getDeliverableMetrics,
+  onMilestoneStatusChange,
+  onActivityStatusChange,
+  onMilestoneChange,
+  onActivityChange,
+  recalculateDeliverableMetrics,
+} from "./deliverableMetrics";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -1227,6 +1235,7 @@ export async function registerRoutes(
       
       if (type && DELIVERABLE_TEMPLATES.some(t => t.type === type)) {
         const result = await instantiateDeliverableFromTemplate(req.params.id, type as DeliverableTemplate["type"]);
+        await recalculateDeliverableMetrics(result.deliverableId);
         const deliverable = await storage.getDeliverable(result.deliverableId);
         return res.status(201).json({
           deliverable,
@@ -1624,6 +1633,27 @@ export async function registerRoutes(
     }
   });
 
+  // ============= DELIVERABLE METRICS =============
+
+  app.get("/api/deliverables/:id/metrics", async (req, res) => {
+    try {
+      const deliverable = await storage.getDeliverable(req.params.id);
+      if (!deliverable) {
+        return res.status(404).json({ error: "Deliverable not found" });
+      }
+
+      const metrics = await getDeliverableMetrics(req.params.id);
+      if (!metrics) {
+        return res.status(500).json({ error: "Failed to calculate metrics" });
+      }
+
+      res.json(metrics);
+    } catch (error) {
+      console.error("Failed to get deliverable metrics:", error);
+      res.status(500).json({ error: "Failed to get deliverable metrics" });
+    }
+  });
+
   app.patch("/api/deliverables/:id", async (req, res) => {
     try {
       const result = insertDeliverableSchema.partial().safeParse(req.body);
@@ -1705,10 +1735,19 @@ export async function registerRoutes(
       if (!result.success) {
         return res.status(400).json({ error: fromError(result.error).toString() });
       }
+      
+      const oldMilestone = await storage.getMilestone(req.params.id);
       const milestone = await storage.updateMilestone(req.params.id, result.data);
       if (!milestone) {
         return res.status(404).json({ error: "Milestone not found" });
       }
+
+      if (result.data.status && oldMilestone && result.data.status !== oldMilestone.status) {
+        await onMilestoneStatusChange(req.params.id, result.data.status);
+      } else if (oldMilestone) {
+        await onMilestoneChange(req.params.id);
+      }
+
       res.json(milestone);
     } catch (error) {
       res.status(500).json({ error: "Failed to update milestone" });
@@ -1780,10 +1819,19 @@ export async function registerRoutes(
       if (!result.success) {
         return res.status(400).json({ error: fromError(result.error).toString() });
       }
+      
+      const oldActivity = await storage.getActivity(req.params.id);
       const activity = await storage.updateActivity(req.params.id, result.data);
       if (!activity) {
         return res.status(404).json({ error: "Activity not found" });
       }
+
+      if (result.data.status && oldActivity && result.data.status !== oldActivity.status) {
+        await onActivityStatusChange(req.params.id, result.data.status);
+      } else if (oldActivity) {
+        await onActivityChange(req.params.id);
+      }
+
       res.json(activity);
     } catch (error) {
       res.status(500).json({ error: "Failed to update activity" });
