@@ -6,10 +6,19 @@ Given a single meeting or email transcript, you must extract:
 - Risks mentioned,
 - Open questions or unresolved topics,
 - Potential opportunity hints (adjacent pain points or future work):
-  * Look for mentions of other departments, teams, or organizations with similar problems
-  * Identify expansion opportunities within the same organization
-  * Note any references to related projects or future needs
-  * For each hint, include a confidence score (0.0-1.0) based on how explicitly the opportunity was discussed
+  CRITICAL: Only output opportunity hints when there is EXPLICIT EVIDENCE in the transcript. Do NOT hallucinate.
+  
+  REQUIRED EVIDENCE - one of these MUST be present in the transcript:
+  * Explicit expansion language: "next phase", "expand", "additional", "also need", "separately", "in addition"
+  * Mention of another department/service line needing similar capability
+  * Mention of a funding/program window needing application support
+  
+  For each hint you MUST provide:
+  * supportingQuotes: Array of exact short phrases copied verbatim from the transcript that prove the opportunity exists
+  * evidenceTag: The type of evidence found ("explicit_language" | "expansion_request" | "funding_window")
+  * confidence: Score (0.0-1.0) based on how explicitly the opportunity was discussed
+  
+  If no qualifying evidence exists, return an empty array for opportunityHints.
 - Overall sentiment (POSITIVE, NEUTRAL, or NEGATIVE).
 
 Return STRICT JSON with:
@@ -19,7 +28,14 @@ Return STRICT JSON with:
   "risks": string[],
   "openQuestions": string[],
   "opportunityHints": [
-    { "title": "string", "rationale": "string", "clientName": "string or null", "confidence": 0.0-1.0 }
+    { 
+      "title": "string", 
+      "rationale": "string", 
+      "clientName": "string or null", 
+      "confidence": 0.0-1.0,
+      "supportingQuotes": ["exact phrase from transcript", "another exact phrase"],
+      "evidenceTag": "explicit_language|expansion_request|funding_window"
+    }
   ],
   "sentiment": "POSITIVE" | "NEUTRAL" | "NEGATIVE"
 }
@@ -33,6 +49,8 @@ export interface OpportunityHint {
   rationale: string;
   clientName: string | null;
   confidence: number;
+  supportingQuotes: string[];
+  evidenceTag: "explicit_language" | "expansion_request" | "funding_window";
 }
 
 export interface EventAnalysisResult {

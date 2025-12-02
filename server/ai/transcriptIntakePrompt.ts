@@ -38,10 +38,19 @@ Extract the following from the transcript:
    - Assign severity: critical, high, medium, low
 
 8. OPPORTUNITY_HINTS: Adjacent pain points, future work possibilities, or potential new engagements mentioned
-   - Look for mentions of other departments, teams, or organizations with similar problems
-   - Identify expansion opportunities within the same organization
-   - Note any references to related projects or future needs
-   - Include a confidence score (0.0-1.0) based on how explicitly the opportunity was discussed
+   CRITICAL: Only output opportunity hints when there is EXPLICIT EVIDENCE in the transcript. Do NOT hallucinate.
+   
+   REQUIRED EVIDENCE - one of these MUST be present in the transcript:
+   - Explicit expansion language: "next phase", "expand", "additional", "also need", "separately", "in addition"
+   - Mention of another department/service line needing similar capability
+   - Mention of a funding/program window needing application support
+   
+   For each hint you MUST provide:
+   - supportingQuotes: Array of exact short phrases copied verbatim from the transcript that prove the opportunity exists
+   - evidenceTag: The type of evidence found ("explicit_language" | "expansion_request" | "funding_window")
+   - confidence: Score (0.0-1.0) based on how explicitly the opportunity was discussed
+   
+   If no qualifying evidence exists, return an empty array for opportunityHints.
 
 Respond ONLY with valid JSON in this exact format:
 {
@@ -65,7 +74,14 @@ Respond ONLY with valid JSON in this exact format:
     { "title": "string", "description": "string", "category": "readiness|tasks|engagement|risks", "severity": "critical|high|medium|low" }
   ],
   "opportunityHints": [
-    { "title": "string", "rationale": "string", "clientName": "string or null", "confidence": 0.0-1.0 }
+    { 
+      "title": "string", 
+      "rationale": "string", 
+      "clientName": "string or null", 
+      "confidence": 0.0-1.0,
+      "supportingQuotes": ["exact phrase from transcript", "another exact phrase"],
+      "evidenceTag": "explicit_language|expansion_request|funding_window"
+    }
   ]
 }
 
@@ -108,6 +124,8 @@ export interface TranscriptAnalysisResult {
     rationale: string;
     clientName: string | null;
     confidence: number;
+    supportingQuotes: string[];
+    evidenceTag: "explicit_language" | "expansion_request" | "funding_window";
   }>;
 }
 
