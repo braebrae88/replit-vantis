@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import MissionControl from "@/pages/MissionControl";
 import Timesheet from "@/pages/Timesheet";
 import Proposals from "@/pages/Proposals";
+import Suggestions from "@/pages/Suggestions";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -16,6 +17,7 @@ function Router() {
       <Route path="/timesheet" component={Timesheet} />
       <Route path="/proposals" component={Proposals} />
       <Route path="/proposals/:id" component={Proposals} />
+      <Route path="/suggestions" component={Suggestions} />
       <Route component={NotFound} />
     </Switch>
   );

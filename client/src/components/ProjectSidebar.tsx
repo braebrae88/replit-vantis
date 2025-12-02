@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams, useLocation } from "wouter";
 import { api, SidebarCurrentItem, SidebarProspectiveItem } from "@/lib/api";
-import { Folder, Plus, Building2, ChevronDown, ChevronRight, FileText } from "lucide-react";
+import { Folder, Plus, Building2, ChevronDown, ChevronRight, FileText, Lightbulb } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -330,8 +330,15 @@ export function ProjectSidebar() {
     queryFn: api.sidebar.getItems,
   });
 
+  const { data: pendingSuggestions } = useQuery({
+    queryKey: ["opportunity-suggestions", "PENDING"],
+    queryFn: () => api.opportunitySuggestions.list("PENDING"),
+  });
+
   const selectedProjectId = location.startsWith("/projects/") ? params.id : undefined;
   const selectedProposalId = location.startsWith("/proposals/") ? params.id : undefined;
+  const isSuggestionsPage = location === "/suggestions";
+  const pendingCount = pendingSuggestions?.length ?? 0;
 
   return (
     <div className="flex flex-col h-full bg-card border-r border-border">
@@ -344,6 +351,39 @@ export function ProjectSidebar() {
 
       <ScrollArea className="flex-1">
         <div className="p-2 space-y-3">
+          <Link href="/suggestions">
+            <div
+              className={cn(
+                "flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-all",
+                isSuggestionsPage
+                  ? "bg-amber-500/10 border border-amber-500/20"
+                  : "hover:bg-muted/50 border border-transparent"
+              )}
+              data-testid="sidebar-suggestions"
+            >
+              <div className="flex items-center gap-2">
+                <Lightbulb className={cn(
+                  "w-4 h-4",
+                  isSuggestionsPage ? "text-amber-600" : "text-amber-500"
+                )} />
+                <span className={cn(
+                  "text-sm font-medium",
+                  isSuggestionsPage ? "text-amber-700" : "text-foreground"
+                )}>
+                  Suggestions
+                </span>
+              </div>
+              {pendingCount > 0 && (
+                <Badge 
+                  variant="secondary" 
+                  className="bg-amber-500/20 text-amber-700 text-[10px] px-1.5 py-0 h-5"
+                >
+                  {pendingCount}
+                </Badge>
+              )}
+            </div>
+          </Link>
+
           {isLoading ? (
             Array(5).fill(0).map((_, i) => (
               <div key={i} className="p-3 rounded-lg">
