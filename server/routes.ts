@@ -70,6 +70,7 @@ import { STAKEHOLDER_ANALYSIS_SYSTEM_PROMPT, StakeholderAnalysisResult } from ".
 import { IMPACT_STORY_SYSTEM_PROMPT, ImpactStoryResult } from "./ai/impactStoryPrompt";
 import { ACCOUNT_GROWTH_SYSTEM_PROMPT, AccountGrowthResult, RuleBasedSuggestion, EngagementIdea } from "./ai/accountGrowthPrompt";
 import { TRANSCRIPT_INTAKE_SYSTEM_PROMPT, buildTranscriptIntakePrompt, TranscriptAnalysisResult } from "./ai/transcriptIntakePrompt";
+import { ACTIVITY_GUIDANCE_SYSTEM_PROMPT, buildActivityGuidanceUserPrompt } from "./ai/activityGuidancePrompt";
 import { callLLM, parseJSONResponse } from "./ai/client";
 import { computeNextActions } from "./nextActionsService";
 
@@ -1513,6 +1514,89 @@ Please generate an impact story based on this information.`;
     } catch (error) {
       console.error("Failed to process transcript intake:", error);
       res.status(500).json({ error: "Failed to process transcript" });
+    }
+  });
+
+  // ============= ACTIVITY GUIDANCE =============
+
+  interface ActivityGuidanceResult {
+    recommendedTitle: string;
+    objective: string;
+    whenToSchedule: string;
+    recommendedDurationMinutes: number;
+    recommendedAttendees: string[];
+    agenda: Array<{ time: string; topic: string }>;
+    prepChecklist: string[];
+    outputChecklist: string[];
+    emailInviteDraft: string;
+  }
+
+  app.get("/api/ai/activities/:activityId/guidance", async (req, res) => {
+    try {
+      const { activityId } = req.params;
+
+      const context = await storage.getActivityWithContext(activityId);
+      if (!context) {
+        return res.status(404).json({ error: "Activity not found or missing context" });
+      }
+
+      const { activity, milestone, deliverable, project, stakeholders, recentInsights } = context;
+
+      const userPrompt = buildActivityGuidanceUserPrompt({
+        activity: {
+          name: activity.name,
+          description: activity.description,
+          status: activity.status,
+        },
+        milestone: {
+          name: milestone.name,
+          description: milestone.description,
+        },
+        deliverable: {
+          name: deliverable.name,
+          type: deliverable.type,
+          description: deliverable.description,
+        },
+        project: {
+          name: project.name,
+          clientName: project.clientName,
+          phase: project.phase,
+        },
+        stakeholders: stakeholders.map((s) => ({
+          name: s.name,
+          role: s.role || "Unknown",
+          influence: s.influence || "medium",
+          sentiment: s.supportLevel,
+        })),
+        recentInsights: recentInsights.map((i) => ({
+          title: i.title,
+          summary: i.summary,
+          sentiment: i.sentiment,
+          type: i.type,
+        })),
+      });
+
+      const llmResult = await callLLM({
+        systemPrompt: ACTIVITY_GUIDANCE_SYSTEM_PROMPT,
+        userContent: userPrompt,
+        temperature: 0.5,
+        maxTokens: 2000,
+        jsonMode: true,
+      });
+
+      if (!llmResult.success) {
+        return res.status(500).json({ error: llmResult.error });
+      }
+
+      const parseResult = parseJSONResponse<ActivityGuidanceResult>(llmResult.content);
+      if (!parseResult.success || !parseResult.data) {
+        return res.status(500).json({ error: parseResult.error });
+      }
+
+      res.json(parseResult.data);
+    } catch (error) {
+      console.error("Failed to generate activity guidance:", error);
+      res.status(500).json({ error: "Failed to generate activity guidance" });
     }
   });
 

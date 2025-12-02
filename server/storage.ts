@@ -122,6 +122,14 @@ export interface IStorage {
   // Activities
   getActivities(milestoneId: string): Promise<Activity[]>;
   getActivity(id: string): Promise<Activity | undefined>;
+  getActivityWithContext(id: string): Promise<{
+    activity: Activity;
+    milestone: Milestone;
+    deliverable: Deliverable;
+    project: Project;
+    stakeholders: Stakeholder[];
+    recentInsights: EngagementInsight[];
+  } | undefined>;
   createActivity(activity: InsertActivity): Promise<Activity>;
   updateActivity(id: string, activity: Partial<InsertActivity>): Promise<Activity | undefined>;
   deleteActivity(id: string): Promise<boolean>;
@@ -476,6 +484,45 @@ export class DatabaseStorage implements IStorage {
   async getActivity(id: string): Promise<Activity | undefined> {
     const [activity] = await db.select().from(activities).where(eq(activities.id, id));
     return activity;
+  }
+
+  async getActivityWithContext(id: string): Promise<{
+    activity: Activity;
+    milestone: Milestone;
+    deliverable: Deliverable;
+    project: Project;
+    stakeholders: Stakeholder[];
+    recentInsights: EngagementInsight[];
+  } | undefined> {
+    const [activity] = await db.select().from(activities).where(eq(activities.id, id));
+    if (!activity) return undefined;
+
+    const [milestone] = await db.select().from(milestones).where(eq(milestones.id, activity.milestoneId));
+    if (!milestone) return undefined;
+
+    const [deliverable] = await db.select().from(deliverables).where(eq(deliverables.id, milestone.deliverableId));
+    if (!deliverable) return undefined;
+
+    const [project] = await db.select().from(projects).where(eq(projects.id, deliverable.projectId));
+    if (!project) return undefined;
+
+    const projectStakeholders = await db.select().from(stakeholders).where(eq(stakeholders.projectId, project.id));
+
+    const recentInsights = await db
+      .select()
+      .from(engagementInsights)
+      .where(eq(engagementInsights.projectId, project.id))
+      .orderBy(sql`${engagementInsights.createdAt} desc`)
+      .limit(10);
+
+    return {
+      activity,
+      milestone,
+      deliverable,
+      project,
+      stakeholders: projectStakeholders,
+      recentInsights,
+    };
   }
 
   async createActivity(activity: InsertActivity): Promise<Activity> {
