@@ -1,9 +1,10 @@
-import { Hexagon, Menu, FileSpreadsheet } from "lucide-react";
+import { Menu, FileSpreadsheet } from "lucide-react";
 import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { ProjectSidebar } from "./ProjectSidebar";
 import { Link } from "wouter";
+import forgeVantisLogo from "@assets/forge_vantis_logo_1764654100313.png";
 
 export default function MissionControlLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -25,13 +26,12 @@ export default function MissionControlLayout({ children }: { children: React.Rea
         </Sheet>
 
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-primary text-primary-foreground flex items-center justify-center rounded-sm">
-            <Hexagon className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="font-bold text-sm tracking-tight">FORGE VANTIS</h1>
-            <p className="text-[10px] text-muted-foreground font-mono tracking-wider uppercase">Mission Control</p>
-          </div>
+          <img 
+            src={forgeVantisLogo} 
+            alt="Forge Vantis" 
+            className="h-8 w-auto"
+          />
+          <p className="text-[10px] text-muted-foreground font-mono tracking-wider uppercase">Mission Control</p>
         </div>
 
         <div className="ml-auto flex items-center gap-2">
