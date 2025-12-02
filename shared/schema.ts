@@ -36,6 +36,9 @@ export const proposalStatusEnum = pgEnum("proposal_status", ["DRAFT", "IN_REVIEW
 // Project Status Enum
 export const projectStatusEnum = pgEnum("project_status", ["ACTIVE", "ARCHIVED"]);
 
+// Opportunity Suggestion Enum
+export const opportunitySuggestionStatusEnum = pgEnum("opportunity_suggestion_status", ["PENDING", "APPROVED", "REJECTED"]);
+
 // Projects Table
 export const projects = pgTable("projects", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -285,6 +288,20 @@ export const sowChecklistItems = pgTable("sow_checklist_items", {
   orderIndex: integer("order_index").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Opportunity Suggestions Table (AI-generated, requires approval)
+export const opportunitySuggestions = pgTable("opportunity_suggestions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").references(() => projects.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  clientName: text("client_name"),
+  rationale: text("rationale").notNull(),
+  confidence: real("confidence").notNull().default(0.5),
+  sourceEventId: varchar("source_event_id").references(() => events.id, { onDelete: "set null" }),
+  status: opportunitySuggestionStatusEnum("status").notNull().default("PENDING"),
+  approvedProposalId: varchar("approved_proposal_id").references(() => proposals.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 // Relations
@@ -624,6 +641,25 @@ export const updateSowChecklistItemSchema = insertSowChecklistItemSchema.partial
 
 export const selectSowChecklistItemSchema = createSelectSchema(sowChecklistItems);
 
+// Opportunity Suggestion Schemas
+export const insertOpportunitySuggestionSchema = createInsertSchema(opportunitySuggestions).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  projectId: z.string().nullish(),
+  clientName: z.string().nullish(),
+  sourceEventId: z.string().nullish(),
+  status: z.enum(["PENDING", "APPROVED", "REJECTED"]).optional(),
+  approvedProposalId: z.string().nullish(),
+  confidence: z.number().min(0).max(1).optional(),
+});
+
+export const updateOpportunitySuggestionSchema = insertOpportunitySuggestionSchema.partial().extend({
+  id: z.string().uuid("Invalid opportunity suggestion ID format"),
+});
+
+export const selectOpportunitySuggestionSchema = createSelectSchema(opportunitySuggestions);
+
 export const insertFileEventSchema = z.object({
   projectId: z.string().uuid("Invalid project ID format"),
   fileName: z.string().min(1, "File name is required"),
@@ -718,6 +754,11 @@ export type InsertSowChecklistItem = z.infer<typeof insertSowChecklistItemSchema
 export type UpdateSowChecklistItem = z.infer<typeof updateSowChecklistItemSchema>;
 
 export type ProposalWithChecklist = Proposal & { checklistItems: SowChecklistItem[] };
+
+// Opportunity Suggestion Types
+export type OpportunitySuggestion = typeof opportunitySuggestions.$inferSelect;
+export type InsertOpportunitySuggestion = z.infer<typeof insertOpportunitySuggestionSchema>;
+export type UpdateOpportunitySuggestion = z.infer<typeof updateOpportunitySuggestionSchema>;
 
 // Next Actions Types (not stored in DB, computed on-the-fly)
 export const nextActionSeverityEnum = ["low", "medium", "high", "critical"] as const;
