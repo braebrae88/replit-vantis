@@ -37,6 +37,12 @@ Extract the following from the transcript:
    - Should be actionable within the next 1-2 weeks
    - Assign severity: critical, high, medium, low
 
+8. OPPORTUNITY_HINTS: Adjacent pain points, future work possibilities, or potential new engagements mentioned
+   - Look for mentions of other departments, teams, or organizations with similar problems
+   - Identify expansion opportunities within the same organization
+   - Note any references to related projects or future needs
+   - Include a confidence score (0.0-1.0) based on how explicitly the opportunity was discussed
+
 Respond ONLY with valid JSON in this exact format:
 {
   "summary": "string",
@@ -57,6 +63,9 @@ Respond ONLY with valid JSON in this exact format:
   ],
   "nextActions": [
     { "title": "string", "description": "string", "category": "readiness|tasks|engagement|risks", "severity": "critical|high|medium|low" }
+  ],
+  "opportunityHints": [
+    { "title": "string", "rationale": "string", "clientName": "string or null", "confidence": 0.0-1.0 }
   ]
 }
 
@@ -93,6 +102,12 @@ export interface TranscriptAnalysisResult {
     description: string;
     category: "readiness" | "tasks" | "engagement" | "risks";
     severity: "critical" | "high" | "medium" | "low";
+  }>;
+  opportunityHints: Array<{
+    title: string;
+    rationale: string;
+    clientName: string | null;
+    confidence: number;
   }>;
 }
 
