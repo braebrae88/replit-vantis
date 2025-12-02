@@ -43,6 +43,11 @@ The backend is built using **Express.js** with **TypeScript**:
 - VANTIS Companion: AI assistant for project guidance using OpenAI gpt-4o
 - Event Analysis: AI-powered extraction of insights from meeting/email transcripts
 - Opportunity Suggestions: AI identifies potential new engagements from transcripts, creates PENDING suggestions that require user approval before becoming proposals
+- Evidence-Based Guardrails: OpportunitySuggestions require verifiable evidence from transcripts:
+  - `supportingQuotes` array must contain exact phrases from raw transcript
+  - `evidenceTag` classifies evidence type (explicit_language, expansion_request, funding_window)
+  - Server-side validator (`server/ai/evidenceValidator.ts`) filters out hallucinated hints
+  - Trigger phrases like "next phase", "expand", "additional" must be present
 - Centralized system prompts in `server/ai/` directory
 
 **Design Decisions**:
