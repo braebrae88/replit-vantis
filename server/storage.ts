@@ -7,6 +7,9 @@ import {
   tasks,
   stakeholders,
   events,
+  deliverables,
+  milestones,
+  activities,
   type Project,
   type InsertProject,
   type UseCase,
@@ -23,6 +26,12 @@ import {
   type InsertStakeholder,
   type Event,
   type InsertEvent,
+  type Deliverable,
+  type InsertDeliverable,
+  type Milestone,
+  type InsertMilestone,
+  type Activity,
+  type InsertActivity,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql } from "drizzle-orm";
@@ -82,6 +91,27 @@ export interface IStorage {
   getEvent(id: string): Promise<Event | undefined>;
   createEvent(event: InsertEvent): Promise<Event>;
   deleteEvent(id: string): Promise<boolean>;
+
+  // Deliverables
+  getDeliverables(projectId: string): Promise<Deliverable[]>;
+  getDeliverable(id: string): Promise<Deliverable | undefined>;
+  createDeliverable(deliverable: InsertDeliverable): Promise<Deliverable>;
+  updateDeliverable(id: string, deliverable: Partial<InsertDeliverable>): Promise<Deliverable | undefined>;
+  deleteDeliverable(id: string): Promise<boolean>;
+
+  // Milestones
+  getMilestones(deliverableId: string): Promise<Milestone[]>;
+  getMilestone(id: string): Promise<Milestone | undefined>;
+  createMilestone(milestone: InsertMilestone): Promise<Milestone>;
+  updateMilestone(id: string, milestone: Partial<InsertMilestone>): Promise<Milestone | undefined>;
+  deleteMilestone(id: string): Promise<boolean>;
+
+  // Activities
+  getActivities(milestoneId: string): Promise<Activity[]>;
+  getActivity(id: string): Promise<Activity | undefined>;
+  createActivity(activity: InsertActivity): Promise<Activity>;
+  updateActivity(id: string, activity: Partial<InsertActivity>): Promise<Activity | undefined>;
+  deleteActivity(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -344,6 +374,93 @@ export class DatabaseStorage implements IStorage {
 
   async deleteEvent(id: string): Promise<boolean> {
     const result = await db.delete(events).where(eq(events.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  // Deliverables
+  async getDeliverables(projectId: string): Promise<Deliverable[]> {
+    return await db.select().from(deliverables).where(eq(deliverables.projectId, projectId)).orderBy(sql`${deliverables.createdAt} asc`);
+  }
+
+  async getDeliverable(id: string): Promise<Deliverable | undefined> {
+    const [deliverable] = await db.select().from(deliverables).where(eq(deliverables.id, id));
+    return deliverable;
+  }
+
+  async createDeliverable(deliverable: InsertDeliverable): Promise<Deliverable> {
+    const [newDeliverable] = await db.insert(deliverables).values(deliverable).returning();
+    return newDeliverable;
+  }
+
+  async updateDeliverable(id: string, deliverable: Partial<InsertDeliverable>): Promise<Deliverable | undefined> {
+    const [updated] = await db
+      .update(deliverables)
+      .set({ ...deliverable, updatedAt: new Date() })
+      .where(eq(deliverables.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDeliverable(id: string): Promise<boolean> {
+    const result = await db.delete(deliverables).where(eq(deliverables.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  // Milestones
+  async getMilestones(deliverableId: string): Promise<Milestone[]> {
+    return await db.select().from(milestones).where(eq(milestones.deliverableId, deliverableId)).orderBy(sql`${milestones.orderIndex} asc`);
+  }
+
+  async getMilestone(id: string): Promise<Milestone | undefined> {
+    const [milestone] = await db.select().from(milestones).where(eq(milestones.id, id));
+    return milestone;
+  }
+
+  async createMilestone(milestone: InsertMilestone): Promise<Milestone> {
+    const [newMilestone] = await db.insert(milestones).values(milestone).returning();
+    return newMilestone;
+  }
+
+  async updateMilestone(id: string, milestone: Partial<InsertMilestone>): Promise<Milestone | undefined> {
+    const [updated] = await db
+      .update(milestones)
+      .set({ ...milestone, updatedAt: new Date() })
+      .where(eq(milestones.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteMilestone(id: string): Promise<boolean> {
+    const result = await db.delete(milestones).where(eq(milestones.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  // Activities
+  async getActivities(milestoneId: string): Promise<Activity[]> {
+    return await db.select().from(activities).where(eq(activities.milestoneId, milestoneId)).orderBy(sql`${activities.orderIndex} asc`);
+  }
+
+  async getActivity(id: string): Promise<Activity | undefined> {
+    const [activity] = await db.select().from(activities).where(eq(activities.id, id));
+    return activity;
+  }
+
+  async createActivity(activity: InsertActivity): Promise<Activity> {
+    const [newActivity] = await db.insert(activities).values(activity).returning();
+    return newActivity;
+  }
+
+  async updateActivity(id: string, activity: Partial<InsertActivity>): Promise<Activity | undefined> {
+    const [updated] = await db
+      .update(activities)
+      .set({ ...activity, updatedAt: new Date() })
+      .where(eq(activities.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteActivity(id: string): Promise<boolean> {
+    const result = await db.delete(activities).where(eq(activities.id, id));
     return result.rowCount ? result.rowCount > 0 : false;
   }
 }
