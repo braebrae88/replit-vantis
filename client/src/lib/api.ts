@@ -517,6 +517,26 @@ export const api = {
     },
   },
 
+  // Stakeholder Analysis
+  stakeholderAnalysis: {
+    analyse: async (projectId: string, stakeholderId: string, relatedText: string): Promise<{
+      analysis: {
+        influence: "LOW" | "MEDIUM" | "HIGH";
+        supportLevel: "OPPOSED" | "NEUTRAL" | "SUPPORTIVE" | "CHAMPION";
+        keyConcerns: string[];
+      };
+      stakeholder: any;
+      insight: any;
+    }> => {
+      const response = await fetch(`/api/ai/projects/${projectId}/stakeholder-insights`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stakeholderId, relatedText }),
+      });
+      return handleResponse(response);
+    },
+  },
+
   // Opportunity Seeds
   opportunitySeeds: {
     list: async (projectId: string): Promise<OpportunitySeed[]> => {

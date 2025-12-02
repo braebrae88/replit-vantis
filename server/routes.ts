@@ -50,6 +50,7 @@ import {
 import { getDeliverableGuidance } from "./guidanceService";
 import { VANTIS_SYSTEM_PROMPT } from "./ai/systemPrompt";
 import { EVENT_ANALYSIS_SYSTEM_PROMPT, EventAnalysisResult } from "./ai/eventAnalysisPrompt";
+import { STAKEHOLDER_ANALYSIS_SYSTEM_PROMPT, StakeholderAnalysisResult } from "./ai/stakeholderPrompt";
 import OpenAI from "openai";
 
 export async function registerRoutes(
@@ -1020,6 +1021,12 @@ User Question: ${message}`;
         return res.status(404).json({ error: "Event not found" });
       }
 
+      if (!event.projectId) {
+        return res.status(400).json({ error: "Event is not associated with a project" });
+      }
+
+      const eventProjectId = event.projectId;
+
       const result = eventAnalysisSchema.safeParse(req.body);
       if (!result.success) {
         return res.status(400).json({ error: fromError(result.error).toString() });
@@ -1063,7 +1070,7 @@ User Question: ${message}`;
 
       if (analysis.summaryBullets && analysis.summaryBullets.length > 0) {
         const insight = await storage.createEngagementInsight({
-          projectId: event.projectId,
+          projectId: eventProjectId,
           eventId: event.id,
           type: "meeting_summary",
           title: `Summary: ${event.title}`,
@@ -1078,7 +1085,7 @@ User Question: ${message}`;
 
       for (const decision of analysis.decisions || []) {
         const insight = await storage.createEngagementInsight({
-          projectId: event.projectId,
+          projectId: eventProjectId,
           eventId: event.id,
           type: "decision",
           title: decision.length > 100 ? decision.substring(0, 97) + "..." : decision,
@@ -1093,7 +1100,7 @@ User Question: ${message}`;
 
       for (const risk of analysis.risks || []) {
         const insight = await storage.createEngagementInsight({
-          projectId: event.projectId,
+          projectId: eventProjectId,
           eventId: event.id,
           type: "risk",
           title: risk.length > 100 ? risk.substring(0, 97) + "..." : risk,
@@ -1108,7 +1115,7 @@ User Question: ${message}`;
 
       for (const question of analysis.openQuestions || []) {
         const insight = await storage.createEngagementInsight({
-          projectId: event.projectId,
+          projectId: eventProjectId,
           eventId: event.id,
           type: "open_question",
           title: question.length > 100 ? question.substring(0, 97) + "..." : question,
@@ -1123,7 +1130,7 @@ User Question: ${message}`;
 
       for (const hint of analysis.opportunityHints || []) {
         const seed = await storage.createOpportunitySeed({
-          projectId: event.projectId,
+          projectId: eventProjectId,
           title: hint.length > 100 ? hint.substring(0, 97) + "..." : hint,
           description: hint,
           source: "meeting",
@@ -1142,6 +1149,103 @@ User Question: ${message}`;
     } catch (error) {
       console.error("Failed to analyse event:", error);
       res.status(500).json({ error: "Failed to analyse event" });
+    }
+  });
+
+  // ============= STAKEHOLDER INSIGHTS =============
+
+  const stakeholderInsightsSchema = z.object({
+    stakeholderId: z.string().min(1, "Stakeholder ID is required"),
+    relatedText: z.string().min(10, "Text must be at least 10 characters"),
+  });
+
+  app.post("/api/ai/projects/:projectId/stakeholder-insights", async (req, res) => {
+    try {
+      const projectId = req.params.projectId;
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const result = stakeholderInsightsSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ error: fromError(result.error).toString() });
+      }
+
+      const { stakeholderId, relatedText } = result.data;
+
+      const stakeholder = await storage.getStakeholder(stakeholderId);
+      if (!stakeholder) {
+        return res.status(404).json({ error: "Stakeholder not found" });
+      }
+
+      if (stakeholder.projectId !== projectId) {
+        return res.status(400).json({ error: "Stakeholder does not belong to this project" });
+      }
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: STAKEHOLDER_ANALYSIS_SYSTEM_PROMPT },
+          { role: "user", content: `Analyse this stakeholder information:\n\nStakeholder: ${stakeholder.name}\nRole: ${stakeholder.role || "Unknown"}\n\nNotes:\n${relatedText}` },
+        ],
+        temperature: 0.3,
+        max_tokens: 1000,
+        response_format: { type: "json_object" },
+      });
+
+      const responseText = completion.choices[0]?.message?.content;
+      if (!responseText) {
+        return res.status(500).json({ error: "No response from AI" });
+      }
+
+      let analysis: StakeholderAnalysisResult;
+      try {
+        analysis = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error("Failed to parse AI response:", responseText);
+        return res.status(500).json({ error: "Failed to parse AI response" });
+      }
+
+      const influenceMap: Record<string, "low" | "medium" | "high"> = {
+        LOW: "low",
+        MEDIUM: "medium",
+        HIGH: "high",
+      };
+      const supportMap: Record<string, "opposed" | "neutral" | "supportive" | "champion"> = {
+        OPPOSED: "opposed",
+        NEUTRAL: "neutral",
+        SUPPORTIVE: "supportive",
+        CHAMPION: "champion",
+      };
+
+      const updatedStakeholder = await storage.updateStakeholder(stakeholderId, {
+        influence: influenceMap[analysis.influence] || "medium",
+        supportLevel: supportMap[analysis.supportLevel] || "neutral",
+        lastContactAt: new Date(),
+      });
+
+      const insight = await storage.createEngagementInsight({
+        projectId,
+        type: "stakeholder_update",
+        title: `Stakeholder Analysis: ${stakeholder.name}`,
+        summary: `Influence: ${analysis.influence}, Support: ${analysis.supportLevel}\n\nKey Concerns:\n• ${analysis.keyConcerns.join("\n• ")}`,
+        sentiment: analysis.supportLevel === "CHAMPION" || analysis.supportLevel === "SUPPORTIVE" ? "positive" 
+                 : analysis.supportLevel === "OPPOSED" ? "negative" 
+                 : "neutral",
+        importance: analysis.influence === "HIGH" ? "high" : analysis.influence === "MEDIUM" ? "medium" : "low",
+        tags: ["stakeholder", "auto-generated"],
+        createdByAI: true,
+      });
+
+      res.json({
+        analysis,
+        stakeholder: updatedStakeholder,
+        insight,
+      });
+    } catch (error) {
+      console.error("Failed to analyse stakeholder:", error);
+      res.status(500).json({ error: "Failed to analyse stakeholder" });
     }
   });
 

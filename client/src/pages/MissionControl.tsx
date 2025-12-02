@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { api } from "@/lib/api";
-import type { Task, UseCase, Risk, Project, Event, NextAction, CompanionResponse, SuggestedTask, StatusReport, RoadmapResponse, RoadmapTask, RoadmapWeek, EngagementInsight, OpportunitySeed } from "@shared/schema";
+import type { Task, UseCase, Risk, Project, Event, NextAction, CompanionResponse, SuggestedTask, StatusReport, RoadmapResponse, RoadmapTask, RoadmapWeek, EngagementInsight, OpportunitySeed, Stakeholder } from "@shared/schema";
 import { useState } from "react";
 import MissionControlLayout from "@/components/MissionControlLayout";
 import { CreateProjectDialog } from "@/components/CreateProjectDialog";
@@ -671,6 +671,218 @@ function ActivityTab({ projectId, events }: { projectId: string; events: Event[]
               onClick={handleAnalyse}
               disabled={isAnalysing || analysisText.trim().length < 10}
               data-testid="button-run-analysis"
+            >
+              {isAnalysing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Analysing...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Run Analysis
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function StakeholdersTab({ projectId }: { projectId: string }) {
+  const [selectedStakeholder, setSelectedStakeholder] = useState<Stakeholder | null>(null);
+  const [analysisText, setAnalysisText] = useState("");
+  const [isAnalysing, setIsAnalysing] = useState(false);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: stakeholders = [], isLoading } = useQuery({
+    queryKey: ["stakeholders", projectId],
+    queryFn: () => api.stakeholders.list(projectId),
+    staleTime: Infinity,
+  });
+
+  const handleAnalyse = async () => {
+    if (!selectedStakeholder || !analysisText.trim()) return;
+    
+    setIsAnalysing(true);
+    try {
+      const result = await api.stakeholderAnalysis.analyse(
+        projectId,
+        selectedStakeholder.id,
+        analysisText
+      );
+      toast({
+        title: "Analysis Complete",
+        description: `Updated ${selectedStakeholder.name}: ${result.analysis.influence} influence, ${result.analysis.supportLevel} support`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["stakeholders", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["engagementInsights", projectId] });
+      setSelectedStakeholder(null);
+      setAnalysisText("");
+    } catch (error) {
+      toast({
+        title: "Analysis Failed",
+        description: error instanceof Error ? error.message : "Failed to analyse stakeholder",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAnalysing(false);
+    }
+  };
+
+  const getInfluenceColor = (influence: string | null) => {
+    switch (influence) {
+      case "high": return "bg-red-500 text-white";
+      case "medium": return "bg-yellow-500 text-white";
+      case "low": return "bg-green-500 text-white";
+      default: return "bg-gray-200 text-gray-600";
+    }
+  };
+
+  const getSupportColor = (support: string | null) => {
+    switch (support) {
+      case "champion": return "bg-green-600 text-white";
+      case "supportive": return "bg-green-400 text-white";
+      case "neutral": return "bg-gray-400 text-white";
+      case "opposed": return "bg-red-500 text-white";
+      default: return "bg-gray-200 text-gray-600";
+    }
+  };
+
+  const getSupportLabel = (support: string | null) => {
+    if (!support) return "Unknown";
+    return support.charAt(0).toUpperCase() + support.slice(1);
+  };
+
+  const getInfluenceLabel = (influence: string | null) => {
+    if (!influence) return "Unknown";
+    return influence.toUpperCase();
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+          <Users className="w-5 h-5 text-muted-foreground" />
+          Stakeholder Heatmap ({stakeholders.length})
+        </h3>
+      </div>
+
+      {stakeholders.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            No stakeholders added yet. Add stakeholders to track influence and support levels.
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead className="text-center">Influence</TableHead>
+                <TableHead className="text-center">Support Level</TableHead>
+                <TableHead className="text-center">Last Contact</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {stakeholders.map((stakeholder) => (
+                <TableRow key={stakeholder.id} data-testid={`row-stakeholder-${stakeholder.id}`}>
+                  <TableCell className="font-medium">{stakeholder.name}</TableCell>
+                  <TableCell>{stakeholder.role || "—"}</TableCell>
+                  <TableCell className="text-center">
+                    <Badge className={cn("min-w-16 justify-center", getInfluenceColor(stakeholder.influence))}>
+                      {getInfluenceLabel(stakeholder.influence)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Badge className={cn("min-w-20 justify-center", getSupportColor(stakeholder.supportLevel))}>
+                      {getSupportLabel(stakeholder.supportLevel)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-center text-sm text-muted-foreground">
+                    {stakeholder.lastContactAt 
+                      ? formatDistanceToNow(new Date(stakeholder.lastContactAt), { addSuffix: true })
+                      : "—"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedStakeholder(stakeholder)}
+                      data-testid={`button-analyse-stakeholder-${stakeholder.id}`}
+                    >
+                      <Sparkles className="w-3 h-3 mr-1" />
+                      Analyse
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+
+      <Dialog open={!!selectedStakeholder} onOpenChange={(open) => !open && setSelectedStakeholder(null)}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-purple-500" />
+              Analyse Stakeholder
+            </DialogTitle>
+            <DialogDescription>
+              {selectedStakeholder && (
+                <>Analysing: <span className="font-medium">{selectedStakeholder.name}</span> ({selectedStakeholder.role || "Unknown Role"})</>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                Paste meeting notes, email excerpts, or other text about this stakeholder:
+              </label>
+              <Textarea
+                placeholder="Enter notes, observations, or meeting excerpts about this stakeholder..."
+                value={analysisText}
+                onChange={(e) => setAnalysisText(e.target.value)}
+                rows={10}
+                className="font-mono text-sm"
+                data-testid="textarea-stakeholder-analysis"
+              />
+              <p className="text-xs text-muted-foreground">
+                VANTIS will classify their influence level, support level, and identify key concerns.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSelectedStakeholder(null);
+                setAnalysisText("");
+              }}
+              disabled={isAnalysing}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAnalyse}
+              disabled={isAnalysing || analysisText.trim().length < 10}
+              data-testid="button-run-stakeholder-analysis"
             >
               {isAnalysing ? (
                 <>
@@ -2640,6 +2852,10 @@ export default function MissionControl() {
               <Briefcase className="w-4 h-4 mr-2" />
               Deliverables
             </TabsTrigger>
+            <TabsTrigger value="stakeholders" data-testid="tab-stakeholders">
+              <Users className="w-4 h-4 mr-2" />
+              Stakeholders
+            </TabsTrigger>
             <TabsTrigger value="insights" data-testid="tab-insights">
               <Lightbulb className="w-4 h-4 mr-2" />
               Insights
@@ -2680,6 +2896,10 @@ export default function MissionControl() {
               selectedDeliverableId={selectedDeliverableId}
               onDeliverableSelect={setSelectedDeliverableId}
             />
+          </TabsContent>
+
+          <TabsContent value="stakeholders">
+            <StakeholdersTab projectId={project.id} />
           </TabsContent>
 
           <TabsContent value="insights">
