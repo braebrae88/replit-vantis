@@ -53,6 +53,10 @@ export interface IStorage {
   updateProject(id: string, project: Partial<InsertProject>): Promise<Project | undefined>;
   deleteProject(id: string): Promise<boolean>;
 
+  // Batch operations for transcript intake
+  findStakeholderByName(projectId: string, name: string): Promise<Stakeholder | undefined>;
+  createManyEngagementInsights(insights: InsertEngagementInsight[]): Promise<EngagementInsight[]>;
+
   // Use Cases
   getUseCases(projectId?: string): Promise<UseCase[]>;
   getUseCase(id: string): Promise<UseCase | undefined>;
@@ -569,6 +573,23 @@ export class DatabaseStorage implements IStorage {
   async deleteMetricSnapshot(id: string): Promise<boolean> {
     const result = await db.delete(metricSnapshots).where(eq(metricSnapshots.id, id));
     return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  // Batch operations for transcript intake
+  async findStakeholderByName(projectId: string, name: string): Promise<Stakeholder | undefined> {
+    const normalizedName = name.toLowerCase().trim();
+    const allStakeholders = await db
+      .select()
+      .from(stakeholders)
+      .where(eq(stakeholders.projectId, projectId));
+    
+    return allStakeholders.find(s => s.name.toLowerCase().trim() === normalizedName);
+  }
+
+  async createManyEngagementInsights(insightsToCreate: InsertEngagementInsight[]): Promise<EngagementInsight[]> {
+    if (insightsToCreate.length === 0) return [];
+    const created = await db.insert(engagementInsights).values(insightsToCreate).returning();
+    return created;
   }
 }
 
