@@ -116,9 +116,167 @@ function WelcomeScreen() {
   );
 }
 
-function SummaryTab({ project }: { project: Project }) {
+function SummaryTab({ project, onTranscriptProcessed }: { project: Project; onTranscriptProcessed?: () => void }) {
+  const [transcript, setTranscript] = useState("");
+  const [eventType, setEventType] = useState<"meeting" | "workshop" | "call">("meeting");
+  const [phase, setPhase] = useState<"DISCOVER" | "MAP" | "PROTOTYPE" | "UNLOCK">(
+    (project.phase?.toUpperCase() as "DISCOVER" | "MAP" | "PROTOTYPE" | "UNLOCK") || "DISCOVER"
+  );
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processResult, setProcessResult] = useState<{
+    insights: number;
+    tasks: number;
+    risks: number;
+    stakeholders: number;
+  } | null>(null);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const handleProcessTranscript = async () => {
+    if (!transcript.trim()) {
+      toast({
+        title: "Transcript Required",
+        description: "Please paste a meeting transcript to process.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsProcessing(true);
+    setProcessResult(null);
+
+    try {
+      const result = await api.transcriptIntake.process(project.id, {
+        rawTranscript: transcript,
+        eventType,
+        phase,
+      });
+
+      setProcessResult({
+        insights: result.insights?.length || 0,
+        tasks: result.tasks?.length || 0,
+        risks: result.risks?.length || 0,
+        stakeholders: result.stakeholders?.length || 0,
+      });
+
+      toast({
+        title: "Transcript Processed",
+        description: `VANTIS extracted ${result.insights?.length || 0} insights, ${result.tasks?.length || 0} tasks, and ${result.risks?.length || 0} risks.`,
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["nextActions", project.id] });
+      queryClient.invalidateQueries({ queryKey: ["tasks", project.id] });
+      queryClient.invalidateQueries({ queryKey: ["risks", project.id] });
+      queryClient.invalidateQueries({ queryKey: ["events", project.id] });
+      queryClient.invalidateQueries({ queryKey: ["engagementInsights", project.id] });
+      queryClient.invalidateQueries({ queryKey: ["stakeholders", project.id] });
+
+      if (onTranscriptProcessed) {
+        onTranscriptProcessed();
+      }
+
+      setTranscript("");
+    } catch (error) {
+      toast({
+        title: "Processing Failed",
+        description: error instanceof Error ? error.message : "Failed to process transcript",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <FileText className="w-4 h-4 text-primary" />
+            Meeting Transcript Intake
+          </CardTitle>
+          <CardDescription>
+            Paste a meeting transcript and let VANTIS extract insights, tasks, risks, and stakeholder mentions.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Textarea
+            placeholder="Paste your meeting transcript here..."
+            value={transcript}
+            onChange={(e) => setTranscript(e.target.value)}
+            className="min-h-[120px] resize-y"
+            data-testid="textarea-transcript"
+          />
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Event Type</label>
+              <Select value={eventType} onValueChange={(v) => setEventType(v as typeof eventType)}>
+                <SelectTrigger className="w-[140px]" data-testid="select-event-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="meeting">Meeting</SelectItem>
+                  <SelectItem value="workshop">Workshop</SelectItem>
+                  <SelectItem value="call">Call</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Phase</label>
+              <Select value={phase} onValueChange={(v) => setPhase(v as typeof phase)}>
+                <SelectTrigger className="w-[140px]" data-testid="select-phase">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DISCOVER">Discover</SelectItem>
+                  <SelectItem value="MAP">Map</SelectItem>
+                  <SelectItem value="PROTOTYPE">Prototype</SelectItem>
+                  <SelectItem value="UNLOCK">Unlock</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              onClick={handleProcessTranscript}
+              disabled={isProcessing || !transcript.trim()}
+              className="gap-2"
+              data-testid="button-process-transcript"
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  Process with VANTIS
+                </>
+              )}
+            </Button>
+          </div>
+          {processResult && (
+            <div className="flex gap-3 pt-2 text-sm">
+              <Badge variant="secondary" className="gap-1">
+                <Lightbulb className="w-3 h-3" />
+                {processResult.insights} insights
+              </Badge>
+              <Badge variant="secondary" className="gap-1">
+                <CheckCircle2 className="w-3 h-3" />
+                {processResult.tasks} tasks
+              </Badge>
+              <Badge variant="secondary" className="gap-1">
+                <AlertTriangle className="w-3 h-3" />
+                {processResult.risks} risks
+              </Badge>
+              <Badge variant="secondary" className="gap-1">
+                <Users className="w-3 h-3" />
+                {processResult.stakeholders} stakeholders
+              </Badge>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="flex items-start justify-between">
         <div className="space-y-1">
           <h2 className="text-2xl font-bold">{project.name}</h2>
