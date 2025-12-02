@@ -54,7 +54,7 @@ import { EVENT_ANALYSIS_SYSTEM_PROMPT, EventAnalysisResult } from "./ai/eventAna
 import { STAKEHOLDER_ANALYSIS_SYSTEM_PROMPT, StakeholderAnalysisResult } from "./ai/stakeholderPrompt";
 import { IMPACT_STORY_SYSTEM_PROMPT, ImpactStoryResult } from "./ai/impactStoryPrompt";
 import { ACCOUNT_GROWTH_SYSTEM_PROMPT, AccountGrowthResult, RuleBasedSuggestion, EngagementIdea } from "./ai/accountGrowthPrompt";
-import OpenAI from "openai";
+import { callLLM, parseJSONResponse } from "./ai/client";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -941,11 +941,6 @@ export async function registerRoutes(
 
   // ============= AI COMPANION =============
 
-  const openai = new OpenAI({
-    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  });
-
   app.post("/api/ai/companion", async (req, res) => {
     try {
       const result = companionRequestSchema.safeParse(req.body);
@@ -1059,20 +1054,19 @@ ${JSON.stringify(contextPayload, null, 2)}
 
 User Question: ${message}`;
 
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: VANTIS_SYSTEM_PROMPT },
-          { role: "user", content: userPrompt },
-        ],
+      const llmResult = await callLLM({
+        systemPrompt: VANTIS_SYSTEM_PROMPT,
+        userContent: userPrompt,
         temperature: 0.7,
-        max_tokens: 1500,
+        maxTokens: 1500,
       });
 
-      const responseText = completion.choices[0]?.message?.content || "I apologize, but I was unable to generate a response. Please try again.";
+      if (!llmResult.success) {
+        return res.status(500).json({ error: llmResult.error });
+      }
 
       const response: CompanionResponse = {
-        responseText,
+        responseText: llmResult.content,
       };
 
       res.json(response);
@@ -1109,29 +1103,24 @@ User Question: ${message}`;
 
       const { rawText } = result.data;
 
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: EVENT_ANALYSIS_SYSTEM_PROMPT },
-          { role: "user", content: `Analyse this meeting/email transcript:\n\n${rawText}` },
-        ],
+      const llmResult = await callLLM({
+        systemPrompt: EVENT_ANALYSIS_SYSTEM_PROMPT,
+        userContent: `Analyse this meeting/email transcript:\n\n${rawText}`,
         temperature: 0.3,
-        max_tokens: 2000,
-        response_format: { type: "json_object" },
+        maxTokens: 2000,
+        jsonMode: true,
       });
 
-      const responseText = completion.choices[0]?.message?.content;
-      if (!responseText) {
-        return res.status(500).json({ error: "No response from AI" });
+      if (!llmResult.success) {
+        return res.status(500).json({ error: llmResult.error });
       }
 
-      let analysis: EventAnalysisResult;
-      try {
-        analysis = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error("Failed to parse AI response:", responseText);
-        return res.status(500).json({ error: "Failed to parse AI response" });
+      const parseResult = parseJSONResponse<EventAnalysisResult>(llmResult.content);
+      if (!parseResult.success || !parseResult.data) {
+        return res.status(500).json({ error: parseResult.error });
       }
+
+      const analysis = parseResult.data;
 
       const createdInsights: any[] = [];
       const createdSeeds: any[] = [];
@@ -1258,29 +1247,24 @@ User Question: ${message}`;
         return res.status(400).json({ error: "Stakeholder does not belong to this project" });
       }
 
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: STAKEHOLDER_ANALYSIS_SYSTEM_PROMPT },
-          { role: "user", content: `Analyse this stakeholder information:\n\nStakeholder: ${stakeholder.name}\nRole: ${stakeholder.role || "Unknown"}\n\nNotes:\n${relatedText}` },
-        ],
+      const llmResult = await callLLM({
+        systemPrompt: STAKEHOLDER_ANALYSIS_SYSTEM_PROMPT,
+        userContent: `Analyse this stakeholder information:\n\nStakeholder: ${stakeholder.name}\nRole: ${stakeholder.role || "Unknown"}\n\nNotes:\n${relatedText}`,
         temperature: 0.3,
-        max_tokens: 1000,
-        response_format: { type: "json_object" },
+        maxTokens: 1000,
+        jsonMode: true,
       });
 
-      const responseText = completion.choices[0]?.message?.content;
-      if (!responseText) {
-        return res.status(500).json({ error: "No response from AI" });
+      if (!llmResult.success) {
+        return res.status(500).json({ error: llmResult.error });
       }
 
-      let analysis: StakeholderAnalysisResult;
-      try {
-        analysis = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error("Failed to parse AI response:", responseText);
-        return res.status(500).json({ error: "Failed to parse AI response" });
+      const parseResult = parseJSONResponse<StakeholderAnalysisResult>(llmResult.content);
+      if (!parseResult.success || !parseResult.data) {
+        return res.status(500).json({ error: parseResult.error });
       }
+
+      const analysis = parseResult.data;
 
       const influenceMap: Record<string, "low" | "medium" | "high"> = {
         LOW: "low",
@@ -1368,31 +1352,24 @@ ${deliverablesText}
 
 Please generate an impact story based on this information.`;
 
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: IMPACT_STORY_SYSTEM_PROMPT },
-          { role: "user", content: userPrompt },
-        ],
+      const llmResult = await callLLM({
+        systemPrompt: IMPACT_STORY_SYSTEM_PROMPT,
+        userContent: userPrompt,
         temperature: 0.4,
-        max_tokens: 1500,
-        response_format: { type: "json_object" },
+        maxTokens: 1500,
+        jsonMode: true,
       });
 
-      const responseText = completion.choices[0]?.message?.content;
-      if (!responseText) {
-        return res.status(500).json({ error: "No response from AI" });
+      if (!llmResult.success) {
+        return res.status(500).json({ error: llmResult.error });
       }
 
-      let result: ImpactStoryResult;
-      try {
-        result = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error("Failed to parse AI response:", responseText);
-        return res.status(500).json({ error: "Failed to parse AI response" });
+      const parseResult = parseJSONResponse<ImpactStoryResult>(llmResult.content);
+      if (!parseResult.success || !parseResult.data) {
+        return res.status(500).json({ error: parseResult.error });
       }
 
-      res.json(result);
+      res.json(parseResult.data);
     } catch (error) {
       console.error("Failed to generate impact story:", error);
       res.status(500).json({ error: "Failed to generate impact story" });
@@ -1545,33 +1522,26 @@ Based on this information, propose 2–5 concrete follow-on engagements that wou
 
 Return your response as JSON.`;
 
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: ACCOUNT_GROWTH_SYSTEM_PROMPT },
-          { role: "user", content: userPrompt },
-        ],
+      const llmResult = await callLLM({
+        systemPrompt: ACCOUNT_GROWTH_SYSTEM_PROMPT,
+        userContent: userPrompt,
         temperature: 0.5,
-        max_tokens: 2000,
-        response_format: { type: "json_object" },
+        maxTokens: 2000,
+        jsonMode: true,
       });
 
-      const responseText = completion.choices[0]?.message?.content;
-      if (!responseText) {
-        return res.status(500).json({ error: "No response from AI" });
+      if (!llmResult.success) {
+        return res.status(500).json({ error: llmResult.error });
       }
 
-      let aiResult: AccountGrowthResult;
-      try {
-        aiResult = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error("Failed to parse AI response:", responseText);
-        return res.status(500).json({ error: "Failed to parse AI response" });
+      const parseResult = parseJSONResponse<AccountGrowthResult>(llmResult.content);
+      if (!parseResult.success || !parseResult.data) {
+        return res.status(500).json({ error: parseResult.error });
       }
 
       res.json({
         ruleBasedSuggestions,
-        aiIdeas: aiResult.ideas || [],
+        aiIdeas: parseResult.data.ideas || [],
         opportunitySeeds,
       });
     } catch (error) {
