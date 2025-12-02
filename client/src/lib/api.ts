@@ -546,6 +546,31 @@ export const api = {
     },
   },
 
+  // Transcript Intake
+  transcriptIntake: {
+    process: async (projectId: string, data: {
+      rawTranscript: string;
+      eventType: "meeting" | "workshop" | "call";
+      phase?: "DISCOVER" | "MAP" | "PROTOTYPE" | "UNLOCK";
+    }): Promise<{
+      eventId: string;
+      insights: any[];
+      tasks: any[];
+      risks: any[];
+      stakeholders: any[];
+      nextActions: NextAction[];
+      transcriptSuggestedActions: NextAction[];
+      summary: string;
+    }> => {
+      const response = await fetch(`/api/ai/projects/${projectId}/transcript-intake`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      return handleResponse(response);
+    },
+  },
+
   // Stakeholder Analysis
   stakeholderAnalysis: {
     analyse: async (projectId: string, stakeholderId: string, relatedText: string): Promise<{
