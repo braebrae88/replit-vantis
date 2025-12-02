@@ -38,6 +38,9 @@ import {
   type InsertEngagementInsight,
   type OpportunitySeed,
   type InsertOpportunitySeed,
+  type MetricSnapshot,
+  type InsertMetricSnapshot,
+  metricSnapshots,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql } from "drizzle-orm";
@@ -131,6 +134,13 @@ export interface IStorage {
   createOpportunitySeed(seed: InsertOpportunitySeed): Promise<OpportunitySeed>;
   updateOpportunitySeed(id: string, seed: Partial<InsertOpportunitySeed>): Promise<OpportunitySeed | undefined>;
   deleteOpportunitySeed(id: string): Promise<boolean>;
+
+  // Metric Snapshots
+  getMetricSnapshots(projectId: string): Promise<MetricSnapshot[]>;
+  getMetricSnapshot(id: string): Promise<MetricSnapshot | undefined>;
+  createMetricSnapshot(snapshot: InsertMetricSnapshot): Promise<MetricSnapshot>;
+  updateMetricSnapshot(id: string, snapshot: Partial<InsertMetricSnapshot>): Promise<MetricSnapshot | undefined>;
+  deleteMetricSnapshot(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -529,6 +539,35 @@ export class DatabaseStorage implements IStorage {
 
   async deleteOpportunitySeed(id: string): Promise<boolean> {
     const result = await db.delete(opportunitySeeds).where(eq(opportunitySeeds.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  // Metric Snapshots
+  async getMetricSnapshots(projectId: string): Promise<MetricSnapshot[]> {
+    return await db.select().from(metricSnapshots).where(eq(metricSnapshots.projectId, projectId)).orderBy(sql`${metricSnapshots.capturedAt} desc`);
+  }
+
+  async getMetricSnapshot(id: string): Promise<MetricSnapshot | undefined> {
+    const [snapshot] = await db.select().from(metricSnapshots).where(eq(metricSnapshots.id, id));
+    return snapshot;
+  }
+
+  async createMetricSnapshot(snapshot: InsertMetricSnapshot): Promise<MetricSnapshot> {
+    const [newSnapshot] = await db.insert(metricSnapshots).values(snapshot).returning();
+    return newSnapshot;
+  }
+
+  async updateMetricSnapshot(id: string, snapshot: Partial<InsertMetricSnapshot>): Promise<MetricSnapshot | undefined> {
+    const [updated] = await db
+      .update(metricSnapshots)
+      .set(snapshot)
+      .where(eq(metricSnapshots.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteMetricSnapshot(id: string): Promise<boolean> {
+    const result = await db.delete(metricSnapshots).where(eq(metricSnapshots.id, id));
     return result.rowCount ? result.rowCount > 0 : false;
   }
 }
