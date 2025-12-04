@@ -43,6 +43,13 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     allowedHosts: true,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:5003', // Client needs to talk to the server on the successful port
+        changeOrigin: true,
+        secure: false, // Set to false since this is a local HTTP connection
+      }
+    },
     fs: {
       strict: true,
       deny: ["**/.*"],
